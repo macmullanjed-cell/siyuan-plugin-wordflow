@@ -1,0 +1,31 @@
+{
+  "name": "siyuan-plugin-wordflow",
+  "author": "macmullanjed-cell",
+  "url": "https://github.com/macmullanjed-cell/siyuan-plugin-wordflow",
+  "version": "0.6.0",
+  "minAppVersion": "3.7.0",
+  "backends": ["windows"],
+  "frontends": ["desktop"],
+  "disabledInPublish": true,
+  "displayName": {
+    "default": "SiWords",
+    "zh-CN": "SiWords 生词高亮"
+  },
+  "description": {
+    "default": "Vocabulary highlighting and review for SiYuan with quick add, hover definitions, a card library, resilient storage and optional AI.",
+    "zh-CN": "面向思源的生词高亮与复习插件，支持快捷添加、悬停释义、词卡管理、可靠存储和可选 AI。"
+  },
+  "readme": {
+    "default": "README.md",
+    "zh-CN": "README.zh-CN.md"
+  },
+  "keywords": [
+    "English",
+    "vocabulary",
+    "highlight",
+    "reading",
+    "英语",
+    "生词",
+    "高亮"
+  ]
+}

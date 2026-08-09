@@ -1,0 +1,8 @@
+package.zip
+*-source.png
+siwords.js
+.codex-*
+tests/*
+!tests/smoke.cjs
+!tests/p0-state-regression.cjs
+!tests/p1-core-regression.cjs
