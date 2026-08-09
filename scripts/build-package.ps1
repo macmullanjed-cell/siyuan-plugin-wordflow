@@ -52,6 +52,12 @@ try {
   } finally { $archive.Dispose() }
 } finally { $stream.Dispose() }
 
-$hash = (Get-FileHash -LiteralPath $OutputPath -Algorithm SHA256).Hash
+$sha256 = [Security.Cryptography.SHA256]::Create()
+try {
+  $hashBytes = $sha256.ComputeHash([IO.File]::ReadAllBytes($OutputPath))
+} finally {
+  $sha256.Dispose()
+}
+$hash = ([BitConverter]::ToString($hashBytes)).Replace("-", "")
 Write-Host "Built $OutputPath"
 Write-Host "SHA256 $hash"
