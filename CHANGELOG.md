@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2
+
+- Prevented long AI definitions, headings, phonetics, URLs, lists, and unbroken English tokens from being clipped in narrow cards and panels.
+- Added bounded heading sizes and local horizontal scrolling for definition tables and code blocks.
+- Improved 320–520px layouts for settings fields and grids without changing the existing color scheme.
+- Added a narrow-panel CSS contract test and verified zero horizontal overflow at 320px and 360px.
+
 ## 0.6.1
 
 - Added an amethyst purple visual system for definition, translation, editor, scope-picker, and vocabulary surfaces in light and dark themes.

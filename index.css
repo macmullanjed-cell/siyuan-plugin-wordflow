@@ -2024,3 +2024,151 @@
 .siwords-section-tab[aria-selected="true"] {
   color: var(--siwords-accent-strong);
 }
+
+/* 0.6.2: resilient long-content and narrow-panel layout. */
+:where(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+:where(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) :where(h1, h2, h3, h4, h5, h6, p, li, blockquote, a, strong, em, span) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+:where(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) :where(h1, h2, h3, h4, h5, h6) {
+  margin: .72em 0 .38em;
+  color: var(--siwords-text);
+  font-weight: 680;
+  line-height: 1.32;
+}
+
+:where(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) h1 { font-size: 1.36em; }
+
+:where(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) h2 { font-size: 1.22em; }
+
+:where(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) :where(h3, h4, h5, h6) { font-size: 1.08em; }
+
+:where(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) :where(pre, table) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+}
+
+:where(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) pre {
+  padding: .55em .7em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.siwords-card > *,
+.siwords-library-word > *,
+.siwords-popover > *,
+.siwords-section-panels,
+.siwords-section-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.siwords-popover > .siwords-definition,
+.siwords-popover .siwords-section-panels,
+.siwords-popover .siwords-section-panel {
+  overflow-x: hidden;
+}
+
+.siwords-popover :where(.siwords-definition, .siwords-section-panel) :where(pre, table) {
+  overflow-x: auto;
+}
+
+.siwords-card__meta > span,
+.siwords-library-word__aliases,
+.siwords-library-word__sentence,
+.siwords-library-word__foot > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.siwords-settings--hiwords {
+  width: min(820px, 100%);
+  box-sizing: border-box;
+}
+
+.siwords-settings--hiwords .siwords-setting,
+.siwords-settings--hiwords .siwords-setting-grid > label {
+  min-width: 0;
+}
+
+.siwords-settings--hiwords .siwords-setting > span {
+  min-width: 0;
+}
+
+.siwords-settings--hiwords :where(.b3-text-field, .b3-select, textarea) {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@container siwords-page (max-width: 520px) {
+  .siwords-settings--hiwords .siwords-settings__section {
+    margin-bottom: 14px;
+    padding: 14px;
+  }
+
+  .siwords-settings--hiwords .siwords-setting-grid {
+    grid-template-columns: 1fr;
+  }
+}

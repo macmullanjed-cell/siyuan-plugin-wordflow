@@ -35,7 +35,7 @@ if ($preview.Length -gt 200KB) { throw "preview.png exceeds 200KB" }
 
 $manifest = Get-Content -LiteralPath (Join-Path $root "plugin.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($manifest.name -ne "siyuan-plugin-wordflow") { throw "Unexpected plugin name" }
-if ($manifest.version -ne "0.6.1") { throw "plugin.json version must be 0.6.1" }
+if ($manifest.version -ne "0.6.2") { throw "plugin.json version must be 0.6.2" }
 if ($manifest.author -eq "GITHUB_OWNER" -or $manifest.url -match "GITHUB_OWNER") { throw "Replace the GitHub owner placeholder before building" }
 
 if (Test-Path -LiteralPath $OutputPath) { Remove-Item -LiteralPath $OutputPath -Force }

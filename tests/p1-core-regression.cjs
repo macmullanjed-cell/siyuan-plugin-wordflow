@@ -2,7 +2,9 @@
 
 // P1/P2 pure-core contract. This suite runs against the distributed index.js.
 const assert = require("assert");
+const fs = require("fs");
 const Module = require("module");
+const path = require("path");
 
 const originalLoad = Module._load;
 class MockPlugin {
@@ -282,6 +284,15 @@ function requireCore(name) {
     assert.equal(chooseFloatingPlacement({ belowSpace: 180, aboveSpace: 420, desiredHeight: 390, minVisibleHeight: 220, preferBelow: true }), "above", "a cramped lower edge must flip above instead of overflowing");
     assert.equal(chooseFloatingPlacement({ belowSpace: 420, aboveSpace: 180, desiredHeight: 390 }), "below", "the default strategy still uses a fully fitting lower surface");
     assert.equal(chooseFloatingPlacement({ belowSpace: 420, aboveSpace: 180, desiredHeight: 390, placement: "above", preferBelow: true }), "above", "an initial placement remains locked to prevent resize jitter");
+  });
+
+  await test("long definitions keep a bounded narrow-panel layout", () => {
+    const css = fs.readFileSync(path.resolve(__dirname, "../index.css"), "utf8");
+    assert.match(css, /resilient long-content and narrow-panel layout/);
+    assert.match(css, /\.siwords-library-word__definition[\s\S]*?overflow-wrap:\s*anywhere/);
+    assert.match(css, /\.siwords-section-panel[\s\S]*?word-break:\s*break-word/);
+    assert.match(css, /:where\(pre, table\)[\s\S]*?overflow-x:\s*auto/);
+    assert.match(css, /@container siwords-page \(max-width: 520px\)[\s\S]*?\.siwords-setting-grid[\s\S]*?grid-template-columns:\s*1fr/);
   });
 
   process.stdout.write(JSON.stringify({ suite: "p1-core-regression", passed, failed: failures.length }) + "\n");

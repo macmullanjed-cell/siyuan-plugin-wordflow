@@ -1,4 +1,4 @@
-# SiWords 0.6.1
+# SiWords 0.6.2
 
 [简体中文](README.zh-CN.md)
 
@@ -21,7 +21,7 @@ SiWords is not affiliated with HiWords, Obsidian, or the SiYuan team.
 
 - SiYuan 3.7.0 or later
 - Windows desktop frontend
-- The 0.6.1 interface is Simplified Chinese; English marketplace metadata and documentation are provided
+- The 0.6.2 interface is Simplified Chinese; English marketplace metadata and documentation are provided
 - PDFs must contain a selectable text layer; scanned PDFs require OCR first
 
 The first public release deliberately does not claim support for macOS, Linux, mobile, browser frontend, Canvas, or automatic conflict merging between concurrently edited devices.
