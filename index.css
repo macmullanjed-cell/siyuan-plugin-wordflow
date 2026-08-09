@@ -598,23 +598,24 @@
   .siwords-translate-popover,
   .siwords-fallback-mark
 ) {
-  --siwords-panel: var(--b3-theme-background);
-  --siwords-surface: var(--b3-theme-surface);
-  --siwords-surface-muted: color-mix(in srgb, var(--b3-theme-surface) 72%, var(--b3-theme-background));
-  --siwords-border: color-mix(in srgb, var(--b3-theme-on-surface) 18%, var(--b3-border-color));
+  --siwords-panel: color-mix(in srgb, #7357e8 2%, var(--b3-theme-background));
+  --siwords-surface: color-mix(in srgb, #7357e8 4%, var(--b3-theme-surface));
+  --siwords-surface-muted: color-mix(in srgb, #7357e8 9%, var(--b3-theme-background));
+  --siwords-border: color-mix(in srgb, #7357e8 28%, var(--b3-border-color));
   --siwords-text: var(--b3-theme-on-background);
   --siwords-muted: var(--b3-theme-on-surface);
-  --siwords-accent: var(--b3-theme-primary);
-  --siwords-accent-soft: color-mix(in srgb, var(--b3-theme-primary) 13%, transparent);
-  --siwords-hover: var(--b3-list-hover);
+  --siwords-accent: #7357e8;
+  --siwords-accent-strong: #5b3fd6;
+  --siwords-accent-soft: color-mix(in srgb, #7357e8 13%, transparent);
+  --siwords-hover: color-mix(in srgb, #7357e8 10%, var(--b3-list-hover));
   --siwords-danger: var(--b3-card-error-color, #c73e32);
   --siwords-danger-soft: var(--b3-card-error-background, color-mix(in srgb, #c73e32 12%, transparent));
-  --siwords-card-shadow: 0 2px 7px rgba(0, 0, 0, .07);
-  --siwords-elevated-shadow: var(--b3-dialog-shadow, 0 10px 30px rgba(0, 0, 0, .18));
+  --siwords-card-shadow: 0 2px 8px rgba(68, 45, 125, .08);
+  --siwords-elevated-shadow: 0 18px 45px rgba(66, 42, 124, .17), 0 4px 13px rgba(66, 42, 124, .10);
   --siwords-radius-sm: 6px;
   --siwords-radius-md: 9px;
   --siwords-radius-lg: 12px;
-  --siwords-focus-ring: 0 0 0 2px color-mix(in srgb, var(--b3-theme-primary) 38%, transparent);
+  --siwords-focus-ring: 0 0 0 3px color-mix(in srgb, #7357e8 30%, transparent);
   color-scheme: inherit;
 }
 
@@ -626,10 +627,16 @@
   .siwords-translate-popover,
   .siwords-fallback-mark
 ) {
-  --siwords-surface-muted: color-mix(in srgb, var(--b3-theme-surface) 84%, var(--b3-theme-background));
-  --siwords-border: color-mix(in srgb, var(--b3-theme-on-surface) 25%, var(--b3-border-color));
-  --siwords-card-shadow: 0 2px 8px rgba(0, 0, 0, .24);
-  --siwords-elevated-shadow: var(--b3-dialog-shadow, 0 12px 34px rgba(0, 0, 0, .42));
+  --siwords-panel: color-mix(in srgb, #a78bfa 5%, var(--b3-theme-background));
+  --siwords-surface: color-mix(in srgb, #a78bfa 8%, var(--b3-theme-surface));
+  --siwords-surface-muted: color-mix(in srgb, #a78bfa 12%, var(--b3-theme-background));
+  --siwords-border: color-mix(in srgb, #a78bfa 34%, var(--b3-border-color));
+  --siwords-accent: #b39afb;
+  --siwords-accent-strong: #c4b5fd;
+  --siwords-accent-soft: color-mix(in srgb, #a78bfa 18%, transparent);
+  --siwords-hover: color-mix(in srgb, #a78bfa 14%, var(--b3-list-hover));
+  --siwords-card-shadow: 0 2px 9px rgba(19, 12, 38, .32);
+  --siwords-elevated-shadow: 0 20px 52px rgba(10, 5, 24, .48), 0 4px 15px rgba(58, 38, 104, .28);
 }
 
 .siwords-ui {
@@ -1872,4 +1879,148 @@
 
 .siwords-translate-popover {
   box-shadow: 0 10px 24px rgba(20, 28, 42, .14), 0 2px 7px rgba(20, 28, 42, .07);
+}
+
+/* 0.6.1: amethyst floating surfaces with a compact, anchored footer. */
+.siwords-popover {
+  max-height: min(420px, calc(100dvh - 24px), var(--siwords-floating-max-height, 420px));
+  border-color: color-mix(in srgb, var(--siwords-accent) 55%, var(--siwords-border));
+  border-radius: 18px;
+  background: var(--siwords-surface);
+  box-shadow: var(--siwords-elevated-shadow);
+}
+
+.siwords-popover__head {
+  min-height: 48px;
+  padding: 10px 13px 10px 14px;
+  border-bottom-color: color-mix(in srgb, var(--siwords-accent) 24%, var(--siwords-border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--siwords-accent) 15%, var(--siwords-surface)), var(--siwords-surface) 72%);
+}
+
+.siwords-popover__head strong {
+  color: var(--siwords-accent-strong);
+  font-size: 17px;
+  letter-spacing: -.01em;
+}
+
+.siwords-popover__head button {
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid color-mix(in srgb, var(--siwords-accent) 18%, transparent);
+  border-radius: 10px;
+  color: var(--siwords-accent-strong);
+  background: var(--siwords-accent-soft);
+}
+
+.siwords-popover__head button:hover {
+  color: var(--siwords-accent-strong);
+  background: color-mix(in srgb, var(--siwords-accent) 20%, transparent);
+}
+
+.siwords-popover > .siwords-definition,
+.siwords-popover .siwords-section-panel {
+  padding: 13px 15px;
+  color: var(--siwords-text);
+}
+
+.siwords-popover .siwords-context {
+  margin: 0 14px 10px;
+  border: 1px solid color-mix(in srgb, var(--siwords-accent) 13%, var(--siwords-border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--siwords-accent) 6%, var(--siwords-surface-muted));
+}
+
+.siwords-popover__footer {
+  flex: 0 0 auto;
+  margin-top: auto;
+  border-top: 1px solid color-mix(in srgb, var(--siwords-accent) 20%, var(--siwords-border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--siwords-accent) 5%, var(--siwords-surface)), color-mix(in srgb, var(--siwords-accent) 10%, var(--siwords-surface)));
+}
+
+.siwords-popover__footer .siwords-source {
+  width: calc(100% - 24px);
+  max-width: none;
+  min-height: 30px;
+  margin: 7px 12px 0;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 9px;
+  text-align: left;
+}
+
+.siwords-popover__footer .siwords-popover__actions {
+  gap: 8px;
+  padding: 8px 11px 10px;
+  border-top: 0;
+  background: transparent;
+}
+
+.siwords-popover__actions button {
+  min-height: 30px;
+  border: 1px solid color-mix(in srgb, var(--siwords-accent) 23%, transparent);
+  color: var(--siwords-accent-strong);
+  background: var(--siwords-accent-soft);
+}
+
+.siwords-popover__actions button:first-child {
+  border-color: transparent;
+  color: #fff;
+  background: linear-gradient(135deg, var(--siwords-accent), var(--siwords-accent-strong));
+  box-shadow: 0 4px 11px color-mix(in srgb, var(--siwords-accent) 24%, transparent);
+}
+
+.siwords-popover__actions button:hover {
+  border-color: color-mix(in srgb, var(--siwords-accent) 38%, transparent);
+  color: var(--siwords-accent-strong);
+  background: color-mix(in srgb, var(--siwords-accent) 19%, transparent);
+}
+
+.siwords-popover__actions button:first-child:hover {
+  border-color: transparent;
+  color: #fff;
+  background: linear-gradient(135deg, var(--siwords-accent-strong), var(--siwords-accent));
+}
+
+[data-theme-mode="dark"] .siwords-popover__actions button:first-child {
+  color: #1d1430;
+}
+
+.siwords-translate-popover,
+.siwords-float,
+.siwords-scope-picker {
+  border-color: color-mix(in srgb, var(--siwords-accent) 45%, var(--siwords-border));
+  background: var(--siwords-surface);
+  box-shadow: var(--siwords-elevated-shadow);
+}
+
+.siwords-translate-head,
+.siwords-scope-picker__header,
+.siwords-editor__head,
+.siwords-page__header {
+  border-color: color-mix(in srgb, var(--siwords-accent) 20%, var(--siwords-border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--siwords-accent) 11%, var(--siwords-surface)), var(--siwords-surface) 74%);
+}
+
+.siwords-translate-head strong,
+.siwords-scope-picker__header strong,
+.siwords-editor__head strong,
+.siwords-page__header h2 {
+  color: var(--siwords-accent-strong);
+}
+
+.siwords-nav-item:hover {
+  color: var(--siwords-accent-strong);
+  background: color-mix(in srgb, var(--siwords-accent) 8%, var(--siwords-hover));
+}
+
+.siwords-nav-item.is-active,
+.siwords-nav-item.is-active-book {
+  color: var(--siwords-accent-strong);
+  background: var(--siwords-accent-soft);
+  box-shadow: inset 3px 0 0 var(--siwords-accent);
+}
+
+.siwords-section-tab.is-active,
+.siwords-section-tab[aria-selected="true"] {
+  color: var(--siwords-accent-strong);
 }

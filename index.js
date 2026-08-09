@@ -10,7 +10,7 @@ const SECRETS_FILE = "siwords-secrets.json";
 const DOCK_TYPE = "siwords-vocabulary-dock";
 const MANAGER_TAB_TYPE = "siwords-library-tab";
 const SCHEMA_VERSION = 5;
-const PLUGIN_VERSION = "0.6.0";
+const PLUGIN_VERSION = "0.6.1";
 const MAX_BACKUPS = 10;
 const PAGE_SIZE = 20;
 const DOCK_PAGE_SIZE = 12;
@@ -170,6 +170,16 @@ function renderMarkdown(value) {
     if (lute?.Md2HTML) return sanitizeRenderedHTML(lute.Md2HTML(markdown));
   } catch (_) {}
   return fallbackMarkdown(markdown);
+}
+function chooseFloatingPlacement(options={}) {
+  const belowSpace=Math.max(0,Number(options.belowSpace)||0);
+  const aboveSpace=Math.max(0,Number(options.aboveSpace)||0);
+  const desiredHeight=Math.max(32,Number(options.desiredHeight)||360);
+  const explicit=options.placement==="above"||options.placement==="below"?options.placement:"";
+  if(explicit)return explicit;
+  const minVisibleHeight=Math.min(desiredHeight,Math.max(120,Number(options.minVisibleHeight)||220));
+  if(options.preferBelow&&belowSpace>=minVisibleHeight)return "below";
+  return belowSpace>=desiredHeight||belowSpace>=aboveSpace?"below":"above";
 }
 function parseDefinitionSections(value) {
   const raw = String(value || "").replace(/\r\n?/g, "\n");
@@ -1212,7 +1222,7 @@ class SiWordsPlugin extends Plugin {
     </div>`;
   }
   aboutHTML() {
-    return `<div class="siwords-about"><h3>SiWords 0.6.0</h3><p>使用插件结构化数据作为唯一可信来源，管理页只是编辑界面，不生成第二份可编辑词库文档。</p><ul><li>多生词本、颜色、别名和掌握状态</li><li>划词、右键和命令面板添加</li><li>思源文档及文字层 PDF 高亮</li><li>悬停释义、当前文档侧栏和 TTS</li><li>插件独立 API 或思源当前模型生成上下文释义</li><li>写入恢复、滚动备份、回收站、导入导出</li><li>大词库分页、空闲时高亮与按版本自检，减少主线程长任务</li><li>公网 AI 与自定义发音地址强制使用 HTTPS</li></ul><p class="siwords-muted">不包含 Canvas、扫描 PDF OCR、移动端完整交互和多设备逐词自动合并。</p></div>`;
+    return `<div class="siwords-about"><h3>SiWords 0.6.1</h3><p>使用插件结构化数据作为唯一可信来源，管理页只是编辑界面，不生成第二份可编辑词库文档。</p><ul><li>多生词本、颜色、别名和掌握状态</li><li>划词、右键和命令面板添加</li><li>思源文档及文字层 PDF 高亮</li><li>悬停释义、当前文档侧栏和 TTS</li><li>插件独立 API 或思源当前模型生成上下文释义</li><li>写入恢复、滚动备份、回收站、导入导出</li><li>大词库分页、空闲时高亮与按版本自检，减少主线程长任务</li><li>公网 AI 与自定义发音地址强制使用 HTTPS</li></ul><p class="siwords-muted">不包含 Canvas、扫描 PDF OCR、移动端完整交互和多设备逐词自动合并。</p></div>`;
   }
   bindManager(root) {
     root.querySelectorAll("[data-view]").forEach((button)=>button.addEventListener("click",()=>{this.syncDraftFromForm(root);this.managerView=button.dataset.view;this.managerPage=0;this.renderManager();}));
@@ -1745,7 +1755,11 @@ class SiWordsPlugin extends Plugin {
     let left=options.alignStart?x:x+gap;
     if(left+estimatedWidth>viewportRight-margin)left=options.alignStart?viewportRight-margin-estimatedWidth:x-estimatedWidth-gap;
     left=Math.max(viewportLeft+margin,Math.min(left,viewportRight-margin-estimatedWidth));
-    const placement=options.placement==="above"||options.placement==="below"?options.placement:(y+gap+estimatedHeight<=viewportBottom-margin?"below":"above");
+    const belowSpace=Math.max(0,viewportBottom-margin-y-gap);
+    const aboveSpace=Math.max(0,y-gap-(viewportTop+margin));
+    const placement=chooseFloatingPlacement({...options,belowSpace,aboveSpace,desiredHeight:estimatedHeight});
+    const availableHeight=Math.max(32,placement==="below"?belowSpace:aboveSpace);
+    element.style.setProperty("--siwords-floating-max-height",`${Math.floor(availableHeight)}px`);
     element.style.position="fixed";
     element.style.left=`${Math.round(left)}px`;
     if(placement==="above"){
@@ -1757,7 +1771,7 @@ class SiWordsPlugin extends Plugin {
     }
     element.style.visibility="";
     element.dataset.placement=placement;
-    return {left,top:y,width:estimatedWidth,height:estimatedHeight,placement,provisional:true};
+    return {left,top:y,width:estimatedWidth,height:Math.min(estimatedHeight,availableHeight),availableHeight,placement,provisional:true};
   }
   positionFloatingElement(element,anchorX,anchorY,options={}){
     if(!element)return null;
@@ -1769,6 +1783,13 @@ class SiWordsPlugin extends Plugin {
     const viewportRight=metrics.right;const viewportBottom=metrics.bottom;
     const x=Number.isFinite(Number(anchorX))?Number(anchorX):viewportLeft+margin;
     const y=Number.isFinite(Number(anchorY))?Number(anchorY):viewportTop+margin;
+    const belowSpace=Math.max(0,viewportBottom-margin-y-gap);
+    const aboveSpace=Math.max(0,y-gap-(viewportTop+margin));
+    const lockedPlacement=options.placement==="above"||options.placement==="below"?options.placement:"";
+    if(lockedPlacement){
+      const availableHeight=Math.max(32,lockedPlacement==="below"?belowSpace:aboveSpace);
+      element.style.setProperty("--siwords-floating-max-height",`${Math.floor(availableHeight)}px`);
+    }
     element.style.visibility="hidden";
     element.style.transform="none";
     element.style.left=`${viewportLeft+margin}px`;
@@ -1781,14 +1802,16 @@ class SiWordsPlugin extends Plugin {
     if(left+width>viewportRight-margin)left=options.alignStart?viewportRight-margin-width:x-width-gap;
     left=Math.max(viewportLeft+margin,Math.min(left,viewportRight-margin-width));
     const reserveHeight=Math.max(height,Math.min(viewportHeight-margin*2,Number(options.reserveHeight)||0));
-    const placement=options.placement==="above"||options.placement==="below"?options.placement:(y+gap+reserveHeight<=viewportBottom-margin?"below":"above");
+    const placement=chooseFloatingPlacement({...options,placement:lockedPlacement,belowSpace,aboveSpace,desiredHeight:reserveHeight});
+    const availableHeight=Math.max(32,placement==="below"?belowSpace:aboveSpace);
+    element.style.setProperty("--siwords-floating-max-height",`${Math.floor(availableHeight)}px`);
     let top=placement==="above"?y-height-gap:y+gap;
     top=Math.max(viewportTop+margin,Math.min(top,viewportBottom-margin-height));
     element.style.left=`${Math.round(left)}px`;
     element.style.top=`${Math.round(top)}px`;
     element.style.visibility="";
     element.dataset.placement=placement;
-    return {left,top,width,height,placement};
+    return {left,top,width,height,availableHeight,placement};
   }
   observeFloatingElement(element,anchorX,anchorY,options={}){
     if(!element)return;
@@ -1832,7 +1855,7 @@ class SiWordsPlugin extends Plugin {
     const pop=document.createElement("div");pop.className="siwords-popover siwords-ui";
     if(this.warmingFloatingSurface){pop.style.opacity="0";pop.style.pointerEvents="none";pop.setAttribute("aria-hidden","true");}
     pop.dataset.wordId=word.id;this.activePopoverWordId=word.id;
-    pop.innerHTML=`<div class="siwords-popover__head"><span class="siwords-dot" style="background:${COLORS[this.entryColor(word)]}"></span><strong>${escapeHTML(word.word)}</strong><button data-action="speak" title="发音">🔊</button></div>${this.definitionHTML(word)}${word.sentence?`<div class="siwords-context">${escapeHTML(word.sentence)}</div>`:""}${word.sourceTitle?`<button type="button" class="siwords-source" data-action="source">来源：${escapeHTML(word.sourceTitle)}</button>`:""}<div class="siwords-popover__actions"><button data-action="master">${word.mastered?"取消掌握":"标记掌握"}</button><button data-action="edit">编辑</button></div>`;
+    pop.innerHTML=`<div class="siwords-popover__head"><span class="siwords-dot" style="background:${COLORS[this.entryColor(word)]}"></span><strong>${escapeHTML(word.word)}</strong><button data-action="speak" title="发音" aria-label="播放 ${escapeHTML(word.word)} 的发音">🔊</button></div>${this.definitionHTML(word)}${word.sentence?`<div class="siwords-context">${escapeHTML(word.sentence)}</div>`:""}<div class="siwords-popover__footer">${word.sourceTitle?`<button type="button" class="siwords-source" data-action="source" title="打开来源">来源：${escapeHTML(word.sourceTitle)}</button>`:""}<div class="siwords-popover__actions"><button data-action="master">${word.mastered?"取消掌握":"标记掌握"}</button><button data-action="edit">编辑</button></div></div>`;
     pop.addEventListener("mouseenter",()=>{if(this.hideTimer)window.clearTimeout(this.hideTimer);this.hideTimer=null;});
     pop.addEventListener("mouseleave",()=>this.hidePopoverSoon());
     this.bindSectionTabs(pop);
@@ -1841,8 +1864,8 @@ class SiWordsPlugin extends Plugin {
     pop.querySelector('[data-action="edit"]').addEventListener("click",()=>{this.hidePopover();this.openWordDialog(word);});
     pop.querySelector('[data-action="source"]')?.addEventListener("click",()=>this.openWordSource(word));
     document.body.appendChild(pop);this.activePopoverElement=pop;
-    const options={alignStart:true,gap:8};
-    const placed=this.provisionalFloatingElement(pop,x,y,{...options,estimatedWidth:360,estimatedHeight:440});
+    const options={alignStart:true,gap:10,preferBelow:true,minVisibleHeight:220};
+    const placed=this.provisionalFloatingElement(pop,x,y,{...options,estimatedWidth:360,estimatedHeight:390});
     this.observeFloatingElement(pop,x,y,{...options,placement:placed?.placement});
     return pop;
   }
@@ -2103,5 +2126,5 @@ class SiWordsPlugin extends Plugin {
   }
 }
 
-SiWordsPlugin.__test={canonicalKey,normalizeSearchText,normalizeAliases,defaultSettings,defaultState,normalizeState,normalizeWord,normalizeBook,validateRawState,validateState,chooseStatePayload,parsePatternPhrase,parseDefinitionSections,isDocumentInScope,buildMatcher,findTermMatches,extractSentence,applyTemplate,safeRemoteUrl,safeTtsUrl,redactSecret,deleteWordState,restoreWordState,renderMarkdown,entryColor,normalizeAIProvider,detectAIType,deepMergeSafe,mergeExtraParams,shouldRetry,buildAIRequest,parseAIResponse};
+SiWordsPlugin.__test={canonicalKey,normalizeSearchText,normalizeAliases,defaultSettings,defaultState,normalizeState,normalizeWord,normalizeBook,validateRawState,validateState,chooseStatePayload,parsePatternPhrase,parseDefinitionSections,isDocumentInScope,buildMatcher,findTermMatches,extractSentence,applyTemplate,safeRemoteUrl,safeTtsUrl,redactSecret,deleteWordState,restoreWordState,renderMarkdown,chooseFloatingPlacement,entryColor,normalizeAIProvider,detectAIType,deepMergeSafe,mergeExtraParams,shouldRetry,buildAIRequest,parseAIResponse};
 module.exports=SiWordsPlugin;

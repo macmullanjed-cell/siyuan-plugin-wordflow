@@ -276,6 +276,14 @@ function requireCore(name) {
     assert.equal(shouldRetry({ name: "AbortError" }), false, "user/unload cancellation is not a retryable failure");
   });
 
+  await test("floating cards prefer below without sacrificing viewport safety", () => {
+    const chooseFloatingPlacement = requireCore("chooseFloatingPlacement");
+    assert.equal(chooseFloatingPlacement({ belowSpace: 280, aboveSpace: 420, desiredHeight: 390, minVisibleHeight: 220, preferBelow: true }), "below", "usable space below should win even when the full card needs internal scrolling");
+    assert.equal(chooseFloatingPlacement({ belowSpace: 180, aboveSpace: 420, desiredHeight: 390, minVisibleHeight: 220, preferBelow: true }), "above", "a cramped lower edge must flip above instead of overflowing");
+    assert.equal(chooseFloatingPlacement({ belowSpace: 420, aboveSpace: 180, desiredHeight: 390 }), "below", "the default strategy still uses a fully fitting lower surface");
+    assert.equal(chooseFloatingPlacement({ belowSpace: 420, aboveSpace: 180, desiredHeight: 390, placement: "above", preferBelow: true }), "above", "an initial placement remains locked to prevent resize jitter");
+  });
+
   process.stdout.write(JSON.stringify({ suite: "p1-core-regression", passed, failed: failures.length }) + "\n");
   if (failures.length) process.exitCode = 1;
 })().finally(() => {

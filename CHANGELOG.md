@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1
+
+- Added an amethyst purple visual system for definition, translation, editor, scope-picker, and vocabulary surfaces in light and dark themes.
+- Made hover cards prefer placement below the matched word whenever at least 220px of readable space is available, while retaining stable above-placement near the viewport edge.
+- Moved source metadata and mastery/edit actions into a compact anchored footer.
+- Added accessible labels, high-contrast controls, viewport-aware height limits, and pure placement regression coverage.
+- Updated the Bazaar preview image to match the new original purple interface.
+
 ## 0.6.0
 
 - Prepared the first public GitHub and SiYuan Bazaar release.
