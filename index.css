@@ -2026,7 +2026,7 @@
 }
 
 /* 0.6.2: resilient long-content and narrow-panel layout. */
-:where(
+:is(
   .siwords-definition,
   .siwords-library-word__definition,
   .siwords-definition-preview,
@@ -2040,7 +2040,7 @@
   word-break: break-word;
 }
 
-:where(
+:is(
   .siwords-definition,
   .siwords-library-word__definition,
   .siwords-definition-preview,
@@ -2053,7 +2053,7 @@
   word-break: break-word;
 }
 
-:where(
+:is(
   .siwords-definition,
   .siwords-library-word__definition,
   .siwords-definition-preview,
@@ -2066,7 +2066,7 @@
   line-height: 1.32;
 }
 
-:where(
+:is(
   .siwords-definition,
   .siwords-library-word__definition,
   .siwords-definition-preview,
@@ -2074,7 +2074,7 @@
   .siwords-translate-result
 ) h1 { font-size: 1.36em; }
 
-:where(
+:is(
   .siwords-definition,
   .siwords-library-word__definition,
   .siwords-definition-preview,
@@ -2082,7 +2082,7 @@
   .siwords-translate-result
 ) h2 { font-size: 1.22em; }
 
-:where(
+:is(
   .siwords-definition,
   .siwords-library-word__definition,
   .siwords-definition-preview,
@@ -2090,7 +2090,7 @@
   .siwords-translate-result
 ) :where(h3, h4, h5, h6) { font-size: 1.08em; }
 
-:where(
+:is(
   .siwords-definition,
   .siwords-library-word__definition,
   .siwords-definition-preview,
@@ -2104,7 +2104,7 @@
   overflow-x: auto;
 }
 
-:where(
+:is(
   .siwords-definition,
   .siwords-library-word__definition,
   .siwords-definition-preview,
@@ -2114,6 +2114,111 @@
   padding: .55em .7em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* 0.6.3: win the SiYuan list reset without leaking typography outside SiWords. */
+:is(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) {
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+  letter-spacing: .004em;
+  line-height: 1.66;
+  text-rendering: optimizeLegibility;
+}
+
+:is(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) :where(h1, h2, h3, h4, h5, h6) {
+  letter-spacing: -.008em;
+  text-wrap: balance;
+}
+
+:is(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) :where(strong, b) {
+  font-weight: 650;
+}
+
+:is(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) :where(p, ul, ol, blockquote, pre) {
+  margin-block: .56em;
+}
+
+:is(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) :where(ul, ol) {
+  margin-inline: 0;
+  padding-inline-start: 2.05em;
+  list-style-position: outside;
+}
+
+:is(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) :where(ul ul, ul ol, ol ul, ol ol) {
+  margin-block: .3em;
+  padding-inline-start: 1.7em;
+}
+
+:is(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) li {
+  margin-block: .34em;
+  padding-inline-start: .12em;
+  line-height: 1.66;
+}
+
+:is(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) li::marker {
+  font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  font-size: .94em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(
+  .siwords-definition,
+  .siwords-library-word__definition,
+  .siwords-definition-preview,
+  .siwords-section-panel,
+  .siwords-translate-result
+) li > p {
+  margin-block: .38em;
 }
 
 .siwords-card > *,

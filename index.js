@@ -10,7 +10,7 @@ const SECRETS_FILE = "siwords-secrets.json";
 const DOCK_TYPE = "siwords-vocabulary-dock";
 const MANAGER_TAB_TYPE = "siwords-library-tab";
 const SCHEMA_VERSION = 5;
-const PLUGIN_VERSION = "0.6.2";
+const PLUGIN_VERSION = "0.6.3";
 const MAX_BACKUPS = 10;
 const PAGE_SIZE = 20;
 const DOCK_PAGE_SIZE = 12;
@@ -1222,7 +1222,7 @@ class SiWordsPlugin extends Plugin {
     </div>`;
   }
   aboutHTML() {
-    return `<div class="siwords-about"><h3>SiWords 0.6.2</h3><p>使用插件结构化数据作为唯一可信来源，管理页只是编辑界面，不生成第二份可编辑词库文档。</p><ul><li>多生词本、颜色、别名和掌握状态</li><li>划词、右键和命令面板添加</li><li>思源文档及文字层 PDF 高亮</li><li>悬停释义、当前文档侧栏和 TTS</li><li>插件独立 API 或思源当前模型生成上下文释义</li><li>写入恢复、滚动备份、回收站、导入导出</li><li>大词库分页、空闲时高亮与按版本自检，减少主线程长任务</li><li>公网 AI 与自定义发音地址强制使用 HTTPS</li></ul><p class="siwords-muted">不包含 Canvas、扫描 PDF OCR、移动端完整交互和多设备逐词自动合并。</p></div>`;
+    return `<div class="siwords-about"><h3>SiWords 0.6.3</h3><p>使用插件结构化数据作为唯一可信来源，管理页只是编辑界面，不生成第二份可编辑词库文档。</p><ul><li>多生词本、颜色、别名和掌握状态</li><li>划词、右键和命令面板添加</li><li>思源文档及文字层 PDF 高亮</li><li>悬停释义、当前文档侧栏和 TTS</li><li>插件独立 API 或思源当前模型生成上下文释义</li><li>写入恢复、滚动备份、回收站、导入导出</li><li>大词库分页、空闲时高亮与按版本自检，减少主线程长任务</li><li>公网 AI 与自定义发音地址强制使用 HTTPS</li></ul><p class="siwords-muted">不包含 Canvas、扫描 PDF OCR、移动端完整交互和多设备逐词自动合并。</p></div>`;
   }
   bindManager(root) {
     root.querySelectorAll("[data-view]").forEach((button)=>button.addEventListener("click",()=>{this.syncDraftFromForm(root);this.managerView=button.dataset.view;this.managerPage=0;this.renderManager();}));

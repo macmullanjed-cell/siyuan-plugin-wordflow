@@ -289,9 +289,13 @@ function requireCore(name) {
   await test("long definitions keep a bounded narrow-panel layout", () => {
     const css = fs.readFileSync(path.resolve(__dirname, "../index.css"), "utf8");
     assert.match(css, /resilient long-content and narrow-panel layout/);
+    assert.match(css, /win the SiYuan list reset without leaking typography outside SiWords/);
     assert.match(css, /\.siwords-library-word__definition[\s\S]*?overflow-wrap:\s*anywhere/);
     assert.match(css, /\.siwords-section-panel[\s\S]*?word-break:\s*break-word/);
     assert.match(css, /:where\(pre, table\)[\s\S]*?overflow-x:\s*auto/);
+    assert.match(css, /:where\(ul, ol\)[\s\S]*?padding-inline-start:\s*2\.05em/);
+    assert.match(css, /li::marker[\s\S]*?font-variant-numeric:\s*tabular-nums/);
+    assert.match(css, /Segoe UI Variable Text/);
     assert.match(css, /@container siwords-page \(max-width: 520px\)[\s\S]*?\.siwords-setting-grid[\s\S]*?grid-template-columns:\s*1fr/);
   });
 

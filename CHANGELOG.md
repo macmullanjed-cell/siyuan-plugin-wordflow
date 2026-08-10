@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.3
+
+- Fixed ordered and unordered list markers being clipped by SiYuan's global zero-padding list reset.
+- Raised selector specificity only inside SiWords definition surfaces so heading sizes and spacing reliably apply in the real app.
+- Added a local Windows system-font stack, balanced heading wrapping, tabular list markers, and calmer paragraph rhythm without changing colors.
+- Added regression coverage for SiYuan's list reset, 320px layouts, and enlarged 20px text.
+
 ## 0.6.2
 
 - Prevented long AI definitions, headings, phonetics, URLs, lists, and unbroken English tokens from being clipped in narrow cards and panels.
