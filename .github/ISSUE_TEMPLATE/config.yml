@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用说明 / Documentation
+    url: https://github.com/macmullanjed-cell/siyuan-plugin-wordflow#readme
+    about: 提交问题前，请先查看安装、兼容范围、快速开始和已知限制。
+  - name: 隐私说明 / Privacy
+    url: https://github.com/macmullanjed-cell/siyuan-plugin-wordflow/blob/main/PRIVACY.md
+    about: 了解本地数据、API Key、AI、翻译和 TTS 的数据处理方式。

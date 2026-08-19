@@ -1,0 +1,104 @@
+name: 兼容性问题
+description: 报告思源版本、Windows、主题、其他插件或 PDF 环境相关问题
+title: "[Compatibility] "
+labels:
+  - compatibility
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SiWords 当前主要支持 Windows 桌面端，PDF 必须具有可选择的文字层。扫描 PDF 请先完成 OCR。
+
+        GitHub Issue 是公开页面；请删除截图、示例文件和日志中的私人正文、文件路径、账号信息、API Key、密码和访问令牌。
+
+  - type: dropdown
+    id: compatibility-type
+    attributes:
+      label: 兼容性类型
+      options:
+        - 思源版本升级后出现问题
+        - Windows 版本或显示缩放相关
+        - 思源主题相关
+        - 与其他插件同时启用时出现问题
+        - 特定文字层 PDF 相关
+        - 其他环境相关
+    validations:
+      required: true
+
+  - type: input
+    id: siwords-version
+    attributes:
+      label: SiWords 版本
+      placeholder: 例如 0.6.7
+    validations:
+      required: true
+
+  - type: input
+    id: siyuan-version
+    attributes:
+      label: 思源版本
+      placeholder: 例如 3.7.0
+    validations:
+      required: true
+
+  - type: input
+    id: windows-environment
+    attributes:
+      label: Windows 与显示环境
+      placeholder: 例如 Windows 11 24H2，系统缩放 150%，双显示器
+    validations:
+      required: true
+
+  - type: textarea
+    id: related-environment
+    attributes:
+      label: 相关主题、插件或 PDF 特征
+      description: 只填写与问题相关的项目。不要上传含私人内容的 PDF；可说明是否能选择和复制文字。
+      placeholder: 例如：仅在主题 X 下出现；关闭插件 Y 后消失；PDF 可以正常选择文字。
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      placeholder: 请说明在哪种环境中出现什么问题。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 最小复现步骤
+      placeholder: |
+        1. 启用……
+        2. 打开……
+        3. 执行……
+        4. 出现……
+    validations:
+      required: true
+
+  - type: textarea
+    id: comparison
+    attributes:
+      label: 对照测试
+      description: 说明切换默认主题、禁用相关插件、换用普通文档或另一份文字层 PDF 后是否仍然出现。
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 补充信息（可选）
+      description: 可附上已去除私人内容的截图、录屏或最小公开示例。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已确认当前环境在 SiWords 声明的支持范围内，或明确说明这是范围外兼容性请求。
+          required: true
+        - label: 我已移除私人正文、文件路径、账号信息、密钥和访问令牌。
+          required: true

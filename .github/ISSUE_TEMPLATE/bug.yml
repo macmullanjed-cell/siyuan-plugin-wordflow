@@ -1,0 +1,106 @@
+name: 功能异常
+description: 报告可稳定复现的功能错误、显示异常或数据问题
+title: "[Bug] "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。GitHub Issue 是公开页面，请勿提交 API Key、密码、访问令牌、私人文档正文、完整词库或未经处理的敏感截图。
+
+        SiWords 不会通过此表单自动读取或上传你的思源数据；只有你填写和附加的内容会随 Issue 公开。
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: 问题发生在哪里？
+      options:
+        - 思源文档划词或高亮
+        - 文字层 PDF 划词或高亮
+        - 悬停词卡
+        - 独立词库页
+        - 当前文档侧栏
+        - 设置、AI 或翻译
+        - 导入、导出、备份或恢复
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: siwords-version
+    attributes:
+      label: SiWords 版本
+      placeholder: 例如 0.6.7
+    validations:
+      required: true
+
+  - type: input
+    id: siyuan-version
+    attributes:
+      label: 思源版本
+      placeholder: 例如 3.7.0
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows 版本
+      placeholder: 例如 Windows 11 24H2
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 简要说明你想完成什么，以及发生了什么。
+      placeholder: 在不包含私人文档内容的前提下描述问题。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 选择……
+        3. 点击……
+        4. 出现……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+      placeholder: 你原本期望看到什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      placeholder: 实际出现了什么？是否每次都能复现？
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 补充信息（可选）
+      description: 可提供已去除私人内容的截图、录屏或日志片段。只有怀疑冲突时才需要说明主题或其他插件。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 Issue，未发现相同问题。
+          required: true
+        - label: 我已移除 API Key、密码、访问令牌、私人正文和其他敏感信息。
+          required: true

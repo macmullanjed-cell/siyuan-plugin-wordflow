@@ -1,8 +1,15 @@
 package.zip
 *-source.png
 siwords.js
+artifacts/
 .codex-*
 tests/*
 !tests/smoke.cjs
 !tests/p0-state-regression.cjs
 !tests/p1-core-regression.cjs
+!tests/feedback-regression.cjs
+!tests/feedback-dom-regression.cjs
+!tests/vocabulary-expansion-regression.cjs
+!tests/vocabulary-expansion-dom-regression.cjs
+!tests/popover-resize-dom-regression.cjs
+!tests/hover-stability-regression.cjs

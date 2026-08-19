@@ -1,5 +1,6 @@
 {
     "openVocabulary":  "Open SiWords vocabulary",
-    "addSelectedWord":  "Add selection to SiWords",
+    "openAddWordFromSelection":  "Open SiWords add-word dialog with selection",
+    "expandCurrentWordRelations":  "Enrich current word relations",
     "refreshHighlights":  "Refresh SiWords highlights"
 }

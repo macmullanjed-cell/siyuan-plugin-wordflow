@@ -1,5 +1,6 @@
 {
     "openVocabulary":  "打开 SiWords 生词库",
-    "addSelectedWord":  "将选中文本加入 SiWords",
+    "openAddWordFromSelection":  "用选中文本打开 SiWords 添加单词窗口",
+    "expandCurrentWordRelations":  "为当前单词补充同根词、近义词和易混词",
     "refreshHighlights":  "刷新 SiWords 高亮"
 }

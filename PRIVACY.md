@@ -11,6 +11,7 @@ The vocabulary library, settings, rolling backups, pending-write recovery data, 
 SiWords performs no AI request merely because a document is opened or highlighted. Network access occurs only after a user explicitly triggers one of the following actions:
 
 - AI definition generation
+- AI vocabulary expansion, including the `Ctrl+Alt+Shift+E` command
 - selection translation
 - AI connection testing
 - custom URL pronunciation
@@ -20,6 +21,12 @@ AI requests may contain the selected word or text, the source sentence or surrou
 When “Use current SiYuan AI” is selected, SiWords reads the enabled provider configuration from SiYuan on demand and keeps a short-lived in-memory cache. It does not include that key in vocabulary export or backup files.
 
 Custom URL pronunciation sends the requested word to the configured TTS endpoint. Browser/system speech does not use that endpoint.
+
+## Feedback
+
+The in-plugin feedback helper builds a draft locally. By default it includes only the SiWords version, SiYuan version, and a coarse operating-system description. Theme and enabled-plugin names are optional and are excluded unless the user selects them. SiWords does not add document text, PDF content, vocabulary entries, source sentences, API URLs, API keys, passwords, or access tokens to a feedback draft.
+
+Copying a draft does not send it anywhere. Choosing to open the prefilled GitHub form sends the visible prefill fields to GitHub as URL parameters; the user can review and edit the form before making the Issue public. GitHub's own privacy terms apply to that page. SiWords does not submit an Issue automatically and does not require or store a GitHub token.
 
 ## Transport security
 

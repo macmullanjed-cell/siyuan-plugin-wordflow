@@ -1,0 +1,69 @@
+name: 功能建议
+description: 从真实使用场景出发，建议新增或调整 SiWords 功能
+title: "[Feature] "
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        好建议首先说明要解决的问题，而不是只给出界面或技术方案。请尽量描述真实工作流，同时移除私人文档内容和账号信息。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景与问题
+      description: 你在什么情况下遇到什么困难？目前为什么难以完成？
+      placeholder: 当我在……时，我需要……，但目前……
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 希望达到的结果
+      description: 说明理想结果；如果有具体交互建议，也可以一并描述。
+      placeholder: 我希望能够……，完成后应该看到……
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 主要涉及的区域
+      options:
+        - 文档或 PDF 划词
+        - 高亮与悬停词卡
+        - 词库、侧栏或复习流程
+        - AI 释义或翻译
+        - 发音
+        - 导入、导出、备份或恢复
+        - 设置、外观或无障碍
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 目前的替代方法（可选）
+      placeholder: 你现在怎样绕过这个问题？为什么仍然不方便？
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 适用范围与取舍（可选）
+      description: 哪些用户会受益？是否会增加隐私、性能、数据兼容或维护成本？
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 Issue，未发现相同建议。
+          required: true
+        - label: 我描述了要解决的真实问题，而不只是功能名称。
+          required: true
+        - label: 我已移除私人正文、账号信息、API Key、密码和访问令牌。
+          required: true

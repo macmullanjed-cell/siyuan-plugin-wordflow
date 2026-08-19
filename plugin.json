@@ -2,7 +2,7 @@
   "name": "siyuan-plugin-wordflow",
   "author": "macmullanjed-cell",
   "url": "https://github.com/macmullanjed-cell/siyuan-plugin-wordflow",
-  "version": "0.6.3",
+  "version": "0.6.7",
   "minAppVersion": "3.7.0",
   "backends": ["windows"],
   "frontends": ["desktop"],
@@ -24,8 +24,19 @@
     "vocabulary",
     "highlight",
     "reading",
+    "PDF",
+    "dictionary",
+    "translation",
+    "wordbook",
     "英语",
     "生词",
-    "高亮"
+    "高亮",
+    "划词",
+    "词典",
+    "单词本",
+    "翻译",
+    "背单词",
+    "发音",
+    "AI"
   ]
 }

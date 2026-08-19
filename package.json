@@ -1,10 +1,10 @@
 {
   "name": "siyuan-plugin-wordflow",
-  "version": "0.6.3",
+  "version": "0.6.7",
   "private": true,
   "description": "Build and test tooling for the SiWords SiYuan plugin",
   "scripts": {
-    "test": "node tests/smoke.cjs && node tests/p0-state-regression.cjs && node tests/p1-core-regression.cjs",
+    "test": "node tests/smoke.cjs && node tests/p0-state-regression.cjs && node tests/p1-core-regression.cjs && node tests/feedback-regression.cjs && node tests/vocabulary-expansion-regression.cjs",
     "build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-package.ps1",
     "release:check": "npm test && npm run build"
   }

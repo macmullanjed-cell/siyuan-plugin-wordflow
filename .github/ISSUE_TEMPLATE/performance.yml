@@ -1,0 +1,101 @@
+name: 卡顿或性能问题
+description: 报告划词、高亮、悬停、滚动、词库管理等操作明显变慢
+title: "[Performance] "
+labels:
+  - performance
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        性能问题需要可比较的信息，但不需要你的私人正文或完整词库。请使用大致数量、耗时和可公开的最小示例。
+
+        GitHub Issue 是公开页面；请勿提交 API Key、密码、访问令牌或未经处理的敏感截图和日志。
+
+  - type: dropdown
+    id: operation
+    attributes:
+      label: 哪项操作变慢？
+      options:
+        - 划词菜单或加入词库
+        - 文档高亮或滚动
+        - PDF 高亮或滚动
+        - 悬停词卡出现或更新
+        - 打开或搜索词库
+        - 打开设置或侧栏
+        - 导入、导出、备份或恢复
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: 版本信息
+      description: 请同时填写 SiWords、思源和 Windows 版本。
+      placeholder: SiWords 0.6.7；思源 3.7.0；Windows 11 24H2
+    validations:
+      required: true
+
+  - type: textarea
+    id: scale
+    attributes:
+      label: 使用规模
+      description: 只需填写大致数量，不要上传完整词库或私人文档。
+      placeholder: 例如：约 800 个词条、当前文档约 2 万字、PDF 约 40 页。
+    validations:
+      required: true
+
+  - type: textarea
+    id: timing
+    attributes:
+      label: 可观察到的耗时或现象
+      placeholder: 例如：选词后约 3 秒才出现操作；禁用 SiWords 后滚动恢复流畅。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 执行……
+        3. 重复……次
+        4. 观察到……
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: 出现频率
+      options:
+        - 每次都会出现
+        - 经常出现
+        - 偶尔出现
+        - 只出现过一次
+    validations:
+      required: true
+
+  - type: textarea
+    id: comparison
+    attributes:
+      label: 对照结果（可选）
+      description: 例如重启思源、关闭其他插件、换成默认主题或在较小文档中测试后的差异。
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 补充信息（可选）
+      description: 可附上已去除私人内容的录屏、性能截图或日志片段。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 Issue，未发现相同问题。
+          required: true
+        - label: 我提供的是大致规模或最小示例，没有附上私人正文、完整词库或密钥。
+          required: true

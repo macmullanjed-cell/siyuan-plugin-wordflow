@@ -10,23 +10,60 @@ const SECRETS_FILE = "siwords-secrets.json";
 const DOCK_TYPE = "siwords-vocabulary-dock";
 const MANAGER_TAB_TYPE = "siwords-library-tab";
 const SCHEMA_VERSION = 5;
-const PLUGIN_VERSION = "0.6.3";
+const PLUGIN_VERSION = "0.6.7";
+const ADD_WORD_COMMAND_KEY = "openAddWordFromSelection";
+const ADD_WORD_HOTKEY = "⌥⇧⌘A";
+const EXPAND_WORD_COMMAND_KEY = "expandCurrentWordRelations";
+const EXPAND_WORD_HOTKEY = "⌥⇧⌘E";
 const MAX_BACKUPS = 10;
 const PAGE_SIZE = 20;
 const DOCK_PAGE_SIZE = 12;
 const DOCUMENT_CACHE_TTL = 15_000;
 const AI_CACHE_TTL = 30 * 60 * 1000;
+const POPOVER_EXIT_DISTANCE = 24;
+const POPOVER_WORD_RETENTION_DISTANCE = 6;
+const POPOVER_HIDE_DELAY = 320;
 const COLORS = {
   "1": "#e57373", "2": "#f6a94a", "3": "#d8b836",
   "4": "#55ad6d", "5": "#4f9dcc", "6": "#9274c8",
 };
 const DEFAULT_AI_PROMPT = "请根据上下文解释“{{word}}”。\n上下文：{{sentence}}\n依次给出：词性、中文释义、简明英文释义、原句中的具体含义、一个自然例句。不要使用表格。";
 const DEFAULT_TRANSLATE_PROMPT = "Translate the following text to {{to}}. Only return the translation, no explanation.\n\nText: {{text}}";
+const PREVIOUS_DEFAULT_VOCABULARY_EXPANSION_PROMPT = `请结合上下文分析英语单词或短语“{{word}}”。
+上下文：{{sentence}}
+
+只返回一个可解析的 JSON 对象，不要 Markdown、代码围栏或额外说明：
+{
+  "wordFamily": [{"word":"", "phonetic":"", "pos":"", "meaning":"", "note":""}],
+  "synonyms": [{"word":"", "phonetic":"", "pos":"", "meaning":"", "note":""}],
+  "confusables": [{"word":"", "phonetic":"", "pos":"", "meaning":"", "note":""}]
+}
+
+规则：
+1. 每个数组最多 {{max}} 项，宁缺毋滥；不要返回目标词本身，也不要跨类别重复。
+2. wordFamily 只放有可靠构词关系的同根词或词族成员，note 说明构词关系。
+3. synonyms 只放语义相近、可在部分语境替换的词，note 说明语义、搭配或语体差别。
+4. confusables 只放因拼写、发音或用法而容易混淆的词，不要把普通近义词重复放入，note 说明区别。
+5. meaning 使用简明中文；pos 使用简短英文词性；phonetic 不确定时留空，不要猜测。`;
+const DEFAULT_VOCABULARY_EXPANSION_PROMPT = `${PREVIOUS_DEFAULT_VOCABULARY_EXPANSION_PROMPT}
+6. word 必须是现代英语中真实、规范的词典词条或标准屈折形式；不得编造拼写或把错误拼写当作词。无法确认时少返回或留空。`;
+const VOCABULARY_EXPANSION_TITLE = "词汇扩展（AI）";
 const AI_PROVIDER_DEFAULTS = {
   "openai-compatible": { apiUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
   anthropic: { apiUrl: "https://api.anthropic.com", model: "claude-3-5-haiku-20241022" },
   gemini: { apiUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-2.5-flash" },
   custom: { apiUrl: "", model: "" },
+};
+const FEEDBACK_REPOSITORY_URL = "https://github.com/macmullanjed-cell/siyuan-plugin-wordflow";
+const FEEDBACK_TYPES = {
+  bug: { label: "功能异常", title: "Bug" },
+  ui: { label: "显示问题", title: "UI" },
+  performance: { label: "性能问题", title: "Performance" },
+  selection: { label: "划词问题", title: "Selection" },
+  pdf: { label: "PDF 问题", title: "PDF" },
+  ai: { label: "AI 问题", title: "AI" },
+  data: { label: "数据问题", title: "Data" },
+  feature: { label: "功能建议", title: "Feature" },
 };
 function nowISO() { return new Date().toISOString(); }
 function uid(prefix) { return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; }
@@ -171,6 +208,119 @@ function renderMarkdown(value) {
   } catch (_) {}
   return fallbackMarkdown(markdown);
 }
+function normalizeFeedbackDraft(value = {}) {
+  const type = Object.prototype.hasOwnProperty.call(FEEDBACK_TYPES, value.type) ? value.type : "bug";
+  return {
+    type,
+    description: String(value.description || "").slice(0, 4000),
+    steps: String(value.steps || "").slice(0, 4000),
+    expected: String(value.expected || "").slice(0, 2500),
+    actual: String(value.actual || "").slice(0, 2500),
+    includeTheme: Boolean(value.includeTheme),
+    includePlugins: Boolean(value.includePlugins),
+  };
+}
+function feedbackDraftSignature(value) {
+  return JSON.stringify(normalizeFeedbackDraft(value));
+}
+function buildFeedbackReport(value, diagnostics = {}) {
+  const draft = normalizeFeedbackDraft(value);
+  const meta = FEEDBACK_TYPES[draft.type];
+  const text = (input) => String(input || "").trim() || "（未填写）";
+  const lines = [
+    `# SiWords ${meta.label}`,
+    "",
+    "## 问题描述",
+    text(draft.description),
+    "",
+    "## 复现步骤",
+    text(draft.steps),
+    "",
+    "## 预期结果",
+    text(draft.expected),
+    "",
+    "## 实际结果",
+    text(draft.actual),
+    "",
+    "## 诊断信息",
+    `- SiWords：${text(diagnostics.pluginVersion)}`,
+    `- 思源：${text(diagnostics.siyuanVersion)}`,
+    `- 操作系统：${text(diagnostics.os)}`,
+  ];
+  if (draft.includeTheme) lines.push(`- 当前主题：${text(diagnostics.theme)}`);
+  if (draft.includePlugins) lines.push(`- 已启用的其他插件：${text(diagnostics.plugins)}`);
+  lines.push(
+    "",
+    "## 隐私确认",
+    "本报告由用户预览后提交；SiWords 未自动附带文档正文、PDF 内容、词库、原句、API 地址或 API Key。",
+  );
+  return lines.join("\n");
+}
+function buildFeedbackIssueUrl(value, diagnostics = {}, repositoryUrl = FEEDBACK_REPOSITORY_URL) {
+  const draft = normalizeFeedbackDraft(value);
+  const meta = FEEDBACK_TYPES[draft.type];
+  const template = draft.type === "feature" ? "feature.yml" : draft.type === "performance" ? "performance.yml" : "bug.yml";
+  const params = new URLSearchParams({ template, title: `[${meta.title}] ${draft.description.trim().split(/\r?\n/u)[0].slice(0, 80) || meta.label}` });
+  const optionalEnvironment = [
+    draft.includeTheme ? `当前主题：${String(diagnostics.theme || "未知")}` : "",
+    draft.includePlugins ? `已启用的其他插件：${String(diagnostics.plugins || "未知")}` : "",
+  ].filter(Boolean).join("\n");
+  if (template === "feature.yml") {
+    params.set("problem", draft.description);
+    params.set("proposal", draft.expected);
+    params.set("area", "其他");
+    if (draft.actual) params.set("alternatives", draft.actual);
+    if (draft.steps || optionalEnvironment) params.set("scope", [draft.steps, optionalEnvironment].filter(Boolean).join("\n\n"));
+  } else if (template === "performance.yml") {
+    params.set("operation", "其他");
+    params.set("versions", `SiWords ${String(diagnostics.pluginVersion || "未知")}；思源 ${String(diagnostics.siyuanVersion || "未知")}；${String(diagnostics.os || "Windows 版本未知")}`);
+    params.set("timing", [draft.description, draft.actual].filter(Boolean).join("\n\n"));
+    params.set("steps", draft.steps);
+    if (draft.expected || optionalEnvironment) params.set("comparison", [draft.expected, optionalEnvironment].filter(Boolean).join("\n\n"));
+  } else {
+    const surfaces = {
+      selection: "思源文档划词或高亮",
+      pdf: "文字层 PDF 划词或高亮",
+      ai: "设置、AI 或翻译",
+      data: "导入、导出、备份或恢复",
+    };
+    params.set("surface", surfaces[draft.type] || "其他");
+    params.set("siwords-version", String(diagnostics.pluginVersion || "未知"));
+    params.set("siyuan-version", String(diagnostics.siyuanVersion || "未知"));
+    params.set("windows-version", String(diagnostics.os || "Windows 版本未知"));
+    params.set("description", draft.description);
+    params.set("steps", draft.steps);
+    params.set("expected", draft.expected);
+    params.set("actual", draft.actual);
+    if (optionalEnvironment) params.set("additional-context", optionalEnvironment);
+  }
+  const base = `${String(repositoryUrl).replace(/\/+$/u, "")}/issues/new`;
+  const fullUrl = `${base}?${params.toString()}`;
+  if (fullUrl.length <= 7000) return fullUrl;
+  const pasteNotice = "反馈内容较长，完整内容已复制；请在此字段粘贴并检查后提交。";
+  const compact = new URLSearchParams({ template, title: `[${meta.title}] ${draft.description.trim().split(/\r?\n/u)[0].slice(0, 40) || meta.label}` });
+  if (template === "feature.yml") {
+    compact.set("problem", pasteNotice);
+    compact.set("proposal", pasteNotice);
+    compact.set("area", "其他");
+  } else if (template === "performance.yml") {
+    compact.set("operation", "其他");
+    compact.set("versions", `SiWords ${String(diagnostics.pluginVersion || "未知")}；思源 ${String(diagnostics.siyuanVersion || "未知")}；${String(diagnostics.os || "Windows 版本未知")}`);
+    compact.set("scale", "请补充大致词条数量、文档字数或 PDF 页数。完整反馈已复制。" );
+    compact.set("timing", pasteNotice);
+    compact.set("steps", pasteNotice);
+  } else {
+    compact.set("surface", "其他");
+    compact.set("siwords-version", String(diagnostics.pluginVersion || "未知"));
+    compact.set("siyuan-version", String(diagnostics.siyuanVersion || "未知"));
+    compact.set("windows-version", String(diagnostics.os || "Windows 版本未知"));
+    compact.set("description", pasteNotice);
+    compact.set("steps", pasteNotice);
+    compact.set("expected", pasteNotice);
+    compact.set("actual", pasteNotice);
+  }
+  return `${base}?${compact.toString()}`;
+}
 function chooseFloatingPlacement(options={}) {
   const belowSpace=Math.max(0,Number(options.belowSpace)||0);
   const aboveSpace=Math.max(0,Number(options.aboveSpace)||0);
@@ -180,6 +330,15 @@ function chooseFloatingPlacement(options={}) {
   const minVisibleHeight=Math.min(desiredHeight,Math.max(120,Number(options.minVisibleHeight)||220));
   if(options.preferBelow&&belowSpace>=minVisibleHeight)return "below";
   return belowSpace>=desiredHeight||belowSpace>=aboveSpace?"below":"above";
+}
+function pointRectDistanceSquared(x, y, rect) {
+  const px=Number(x);const py=Number(y);
+  if(!Number.isFinite(px)||!Number.isFinite(py)||!rect)return Number.POSITIVE_INFINITY;
+  const left=Number(rect.left);const right=Number(rect.right);const top=Number(rect.top);const bottom=Number(rect.bottom);
+  if(![left,right,top,bottom].every(Number.isFinite))return Number.POSITIVE_INFINITY;
+  const dx=px<left?left-px:px>right?px-right:0;
+  const dy=py<top?top-py:py>bottom?py-bottom:0;
+  return dx*dx+dy*dy;
 }
 function parseDefinitionSections(value) {
   const raw = String(value || "").replace(/\r\n?/g, "\n");
@@ -226,6 +385,9 @@ function defaultSettings() {
     ttsTemplate: "https://dict.youdao.com/dictvoice?audio={{word}}&type=2",
     currentBookId: "default",
     aiPrompt: DEFAULT_AI_PROMPT,
+    enableVocabularyExpansion: true,
+    vocabularyExpansionLimit: 3,
+    vocabularyExpansionPrompt: DEFAULT_VOCABULARY_EXPANSION_PROMPT,
     aiEnabled: true,
     aiSource: "custom",
     aiProvider: "openai-compatible",
@@ -340,6 +502,12 @@ function normalizeState(input) {
   state.settings.aiExtraParams = String(state.settings.aiExtraParams || "{}");
   state.settings.aiRetries = Math.max(0, Math.min(2, Number(state.settings.aiRetries) || 0));
   state.settings.aiCacheMinutes = Math.max(0, Math.min(1440, Number(state.settings.aiCacheMinutes) || 30));
+  state.settings.enableVocabularyExpansion = state.settings.enableVocabularyExpansion !== false;
+  state.settings.vocabularyExpansionLimit = clampVocabularyExpansionLimit(state.settings.vocabularyExpansionLimit);
+  state.settings.vocabularyExpansionPrompt = String(state.settings.vocabularyExpansionPrompt || DEFAULT_VOCABULARY_EXPANSION_PROMPT);
+  if (state.settings.vocabularyExpansionPrompt === PREVIOUS_DEFAULT_VOCABULARY_EXPANSION_PROMPT) {
+    state.settings.vocabularyExpansionPrompt = DEFAULT_VOCABULARY_EXPANSION_PROMPT;
+  }
   state.settings.hoverDelay = Math.max(80, Math.min(2000, Number(state.settings.hoverDelay) || 180));
   const fromVersion = Number(input.schemaVersion || input.version || 1);
   if (fromVersion < 4 && !Object.prototype.hasOwnProperty.call(incomingSettings, "aiSource")) state.settings.aiSource = "siyuan";
@@ -578,11 +746,152 @@ function extractSentence(text, offset) {
 }
 function applyTemplate(template, values) {
   const fallback = template == null ? DEFAULT_AI_PROMPT : template;
-  return String(fallback).replace(/\{\{(word|sentence|language|text|to|targetLang)\}\}/g, (_, key) => {
+  return String(fallback).replace(/\{\{(word|sentence|language|text|to|targetLang|max)\}\}/g, (_, key) => {
     if (key === "sentence") return String(values?.sentence || "无");
     if (key === "to" || key === "targetLang") return String(values?.to || values?.targetLang || "zh-CN");
     return String(values?.[key] || "");
   });
+}
+function clampVocabularyExpansionLimit(value) {
+  return Math.max(1, Math.min(3, Math.floor(Number(value) || 3)));
+}
+function compactVocabularyText(value, limit = 180) {
+  return String(value == null ? "" : value)
+    .replace(/[\u0000-\u001f\u007f]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, limit);
+}
+function sanitizeVocabularyInline(value, limit = 180) {
+  return compactVocabularyText(value, limit)
+    .replace(/\\/gu, "\\\\")
+    .replace(/([`*_{}\[\]<>])/gu, "\\$1")
+    .replace(/-{3,}/gu, "—");
+}
+function firstVocabularyValue(input, keys) {
+  for (const key of keys) {
+    if (input != null && Object.prototype.hasOwnProperty.call(input, key)) return input[key];
+  }
+  return "";
+}
+function parseVocabularyExpansionResponse(value, headword = "", limit = 3) {
+  const source = String(value || "").trim()
+    .replace(/^```(?:json)?\s*/iu, "")
+    .replace(/\s*```$/u, "");
+  const start = source.indexOf("{");
+  const end = source.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("AI 未返回可解析的词汇扩展 JSON");
+  let parsed;
+  try { parsed = JSON.parse(source.slice(start, end + 1)); }
+  catch (_) { throw new Error("AI 返回的词汇扩展 JSON 格式不完整，请重试"); }
+  if (!isPlainObject(parsed)) throw new Error("AI 返回的词汇扩展不是对象");
+  const cap = clampVocabularyExpansionLimit(limit);
+  const seen = new Set([canonicalKey(headword)].filter(Boolean));
+  const normalizeCategory = (rawItems) => {
+    const output = [];
+    for (const rawItem of Array.isArray(rawItems) ? rawItems : []) {
+      const item = typeof rawItem === "string" ? { word: rawItem } : rawItem;
+      if (!isPlainObject(item)) continue;
+      const word = compactVocabularyText(firstVocabularyValue(item, ["word", "term", "单词", "词"]), 80);
+      const key = canonicalKey(word);
+      if (!key || seen.has(key) || !/[\p{L}\p{N}]/u.test(word)) continue;
+      const normalized = {
+        word,
+        phonetic: compactVocabularyText(firstVocabularyValue(item, ["phonetic", "ipa", "音标"]), 80).replace(/^\/+|\/+$/gu, ""),
+        pos: compactVocabularyText(firstVocabularyValue(item, ["pos", "partOfSpeech", "词性"]), 40),
+        meaning: compactVocabularyText(firstVocabularyValue(item, ["meaning", "definition", "释义", "含义"]), 180),
+        note: compactVocabularyText(firstVocabularyValue(item, ["note", "difference", "relation", "说明", "区别", "关系"]), 220),
+      };
+      if (!normalized.meaning && !normalized.note) continue;
+      seen.add(key);
+      output.push(normalized);
+      if (output.length >= cap) break;
+    }
+    return output;
+  };
+  const wordFamily = normalizeCategory(firstVocabularyValue(parsed, ["wordFamily", "word_family", "sameRoot", "同根词", "词族"]));
+  const synonyms = normalizeCategory(firstVocabularyValue(parsed, ["synonyms", "nearSynonyms", "近义词"]));
+  const confusables = normalizeCategory(firstVocabularyValue(parsed, ["confusables", "similar", "similarWords", "易混词", "相似词"]));
+  if (!wordFamily.length && !synonyms.length && !confusables.length) throw new Error("AI 没有返回可靠的同根词、近义词或相似词");
+  return { wordFamily, synonyms, confusables };
+}
+function formatVocabularyExpansionMarkdown(value) {
+  const groups = [
+    ["### 同根词", value?.wordFamily, "构词"],
+    ["### 近义词", value?.synonyms, "辨析"],
+    ["### 形近 / 易混词", value?.confusables, "区别"],
+  ];
+  return groups.map(([heading, items, noteLabel]) => {
+    const rows = (Array.isArray(items) ? items : []).map((item) => {
+      const word = sanitizeVocabularyInline(item.word, 80);
+      const phonetic = sanitizeVocabularyInline(item.phonetic, 80);
+      const pos = sanitizeVocabularyInline(item.pos, 40);
+      const meaning = sanitizeVocabularyInline(item.meaning, 180);
+      const note = sanitizeVocabularyInline(item.note, 220);
+      if (!word || (!meaning && !note)) return "";
+      const metadata = [phonetic ? `*/${phonetic}/*` : "", pos ? `*${pos}*` : ""].filter(Boolean).join(" · ");
+      const details = [meaning ? `**释义**：${meaning}` : "", note ? `**${noteLabel}**：${note}` : ""].filter(Boolean).join("；");
+      return `#### ${word}${metadata ? ` · ${metadata}` : ""}\n${details}`;
+    }).filter(Boolean);
+    return `${heading}\n\n${rows.length ? rows.join("\n\n") : "_本次未返回可靠结果。_"}`;
+  }).join("\n\n");
+}
+function upsertVocabularyExpansionSection(definition, expansionMarkdown) {
+  const raw = String(definition || "").replace(/\r\n?/gu, "\n");
+  const heading = `**${VOCABULARY_EXPANSION_TITLE}**`;
+  const generated = [heading, String(expansionMarkdown || "").trim()].filter(Boolean).join("\n");
+  const lines = raw.split("\n");
+  const dividers = [-1];
+  lines.forEach((line, index) => { if (/^\s*---\s*$/u.test(line)) dividers.push(index); });
+  dividers.push(lines.length);
+  for (let index = 0; index < dividers.length - 1; index += 1) {
+    const start = dividers[index] + 1;
+    const end = dividers[index + 1];
+    const first = lines.slice(start, end).findIndex((line) => line.trim());
+    if (first >= 0 && lines[start + first].trim() === heading) {
+      lines.splice(start, end - start, ...generated.split("\n"));
+      return lines.join("\n");
+    }
+  }
+  const base = raw.trimEnd();
+  return base ? `${base}\n\n---\n${generated}\n\n---` : `${generated}\n\n---`;
+}
+function primaryDefinitionLayout(value) {
+  const raw=String(value||"");
+  const divider=/^[\t ]*---[\t ]*$/mu.exec(raw);
+  const dividerIndex=divider?.index??-1;
+  const segment=dividerIndex>=0?raw.slice(0,dividerIndex):raw;
+  const trimmed=segment.trim();
+  const lines=trimmed?trimmed.split(/\r?\n/u):[];
+  const title=lines[0]?.trim().match(/^\*\*(.+?)\*\*$/u)?.[1]?.trim()||"";
+  const ownsFirstSegment=dividerIndex<0&&!trimmed||Boolean(trimmed&&(!title||title==="释义"));
+  return {raw,dividerIndex,segment,trimmed,lines,title,ownsFirstSegment};
+}
+function extractPrimaryDefinition(value) {
+  const layout=primaryDefinitionLayout(value);
+  if(!layout.ownsFirstSegment)return"";
+  if(layout.title==="释义")return layout.lines.slice(1).join("\n").trim();
+  return layout.trimmed;
+}
+function primaryDefinitionInputError(value) {
+  const text=String(value||"").replace(/\r\n?/gu,"\n");
+  if(/^\s*---\s*$/mu.test(text))return"基础释义中不能使用独立一行的 ---；如需编辑分节，请使用“完整编辑”";
+  const first=text.split("\n").find((line)=>line.trim())?.trim()||"";
+  if(/^\*\*.+?\*\*$/u.test(first))return"基础释义首行不能只包含加粗标题；如需编辑分节，请使用“完整编辑”";
+  return"";
+}
+function replacePrimaryDefinitionPreservingSections(currentDefinition, nextDefinition) {
+  const layout=primaryDefinitionLayout(currentDefinition);
+  const incoming=String(nextDefinition||"").replace(/\r\n?/gu,"\n").trim();
+  if(layout.ownsFirstSegment){
+    if(layout.dividerIndex<0)return incoming;
+    const suffix=layout.raw.slice(layout.dividerIndex);
+    return incoming?`${incoming}\n\n${suffix}`:suffix;
+  }
+  if(!incoming)return layout.raw;
+  if(!layout.raw)return incoming;
+  const startsWithDivider=/^[\t ]*---[\t ]*(?:\r?\n|$)/u.test(layout.raw);
+  return startsWithDivider?`${incoming}\n\n${layout.raw}`:`${incoming}\n\n---\n${layout.raw}`;
 }
 function isLoopbackHost(hostname) {
   const host = String(hostname || "").toLowerCase();
@@ -616,6 +925,52 @@ function detectAIType(provider, apiUrl = "") {
   if (lower.includes("anthropic") || lower.includes("/messages")) return "anthropic";
   if (lower.includes("generativelanguage") || lower.includes("gemini") || lower.includes(":generatecontent")) return "gemini";
   return "openai";
+}
+function isOfficialDeepSeekAPI(apiUrl) {
+  try {
+    const url = new URL(String(apiUrl || "").trim());
+    return url.protocol === "https:" && url.hostname.toLowerCase() === "api.deepseek.com";
+  } catch (_) { return false; }
+}
+function resolveSiYuanModelConfig(model, apiUrl = "") {
+  const configuredName = String(model?.name || model?.model || "").trim();
+  if (!configuredName) return { model: "", extraParams: {}, migratedFrom: "" };
+  if (isOfficialDeepSeekAPI(apiUrl) && configuredName === "deepseek-chat") {
+    return {
+      model: "deepseek-v4-flash",
+      extraParams: { thinking: { type: "disabled" } },
+      migratedFrom: configuredName,
+    };
+  }
+  if (isOfficialDeepSeekAPI(apiUrl) && configuredName === "deepseek-reasoner") {
+    return {
+      model: "deepseek-v4-flash",
+      extraParams: { thinking: { type: "enabled" } },
+      migratedFrom: configuredName,
+    };
+  }
+  return { model: configuredName, extraParams: {}, migratedFrom: "" };
+}
+function selectSiYuanProviderModel(providers, selectedModelId = "") {
+  const available = [];
+  for (const provider of Array.isArray(providers) ? providers : []) {
+    if (!provider?.enabled) continue;
+    for (const model of Array.isArray(provider.models) ? provider.models : []) {
+      if (model?.enabled) available.push({ provider, model });
+    }
+  }
+  const selected = String(selectedModelId || "").trim();
+  if (selected) {
+    for (const field of ["id","displayName","name"]) {
+      const matches=available.filter((item)=>String(item.model?.[field] || "")===selected);
+      if(matches.length===1)return matches[0];
+      if(matches.length>1)throw new Error(`思源 AI 模型引用“${selected}”存在歧义，请在思源 AI 设置中重新选择模型`);
+    }
+    throw new Error("思源当前选中的 AI 模型已停用或不存在，请先在思源 AI 设置中重新选择模型");
+  }
+  if (available.length === 1) return available[0];
+  if (!available.length) throw new Error("思源中没有启用可用的 AI 模型");
+  throw new Error("思源启用了多个 AI 模型，但没有明确选中模型，请先在思源 AI 设置中选择");
 }
 function appendPath(base, path) {
   return `${String(base || "").replace(/\/+$/, "")}${path}`;
@@ -720,6 +1075,7 @@ class SiWordsPlugin extends Plugin {
     this.managerPage = 0;
     this.editorDraft = null;
     this.editorOriginal = "";
+    this.feedbackDraft = normalizeFeedbackDraft();
     this.dock = null;
     this.dockTab = "current";
     this.dockSearch = "";
@@ -736,6 +1092,12 @@ class SiWordsPlugin extends Plugin {
     this.hoverPointer = null;
     this.hoverOrigin = null;
     this.suppressHoverUntil = 0;
+    this.lastPopoverPointer = null;
+    // The last user-chosen popover size lives for this plugin session. Keeping
+    // it out of the vocabulary state avoids turning a UI preference into a
+    // word-library write on every pointer drag.
+    this.popoverUserSize = null;
+    this.popoverResizeSession = null;
     this.activePopoverWordId = "";
     this.activePopoverElement = null;
     this.activePopoverHitRects = [];
@@ -750,6 +1112,8 @@ class SiWordsPlugin extends Plugin {
     this.aiCache = new Map();
     this.definitionCache = new Map();
     this.siyuanAIConfigCache = null;
+    this.activeWordDialogContext = null;
+    this.editorAIInFlight = false;
     this.surfaceCache = new WeakMap();
     this.hoverScopeCache = new WeakMap();
     this.onMouseUpBound = this.onMouseUp.bind(this);
@@ -811,7 +1175,11 @@ class SiWordsPlugin extends Plugin {
       update: () => this.renderDock(undefined, true), destroy: () => { this.dock = null; },
     });
     this.addCommand({ langKey: "openVocabulary", hotkey: "⌥⌘H", callback: () => this.openManager() });
-    this.addCommand({ langKey: "addSelectedWord", hotkey: "⌥⌘A", callback: () => this.addCurrentSelection() });
+    // These command IDs intentionally differ from the pre-0.6.4 IDs. SiYuan
+    // persists a command's custom binding by ID, so reusing the old IDs would
+    // keep the conflicting Ctrl+Alt+A / Ctrl+Alt+E bindings for existing users.
+    this.addCommand({ langKey: ADD_WORD_COMMAND_KEY, hotkey: ADD_WORD_HOTKEY, callback: () => this.addCurrentSelection() });
+    this.addCommand({ langKey: EXPAND_WORD_COMMAND_KEY, hotkey: EXPAND_WORD_HOTKEY, callback: () => this.runVocabularyExpansionShortcut() });
     this.addCommand({ langKey: "refreshHighlights", callback: () => this.refreshHighlights() });
     this.eventBus.on("open-menu-content", this.onMenuBound);
     this.eventBus.on("loaded-protyle-static", this.onEditorBound);
@@ -973,8 +1341,10 @@ class SiWordsPlugin extends Plugin {
   async commitChange(message = "已保存", options = {}) {
     this.rebuildMatcher();
     await this.saveState(message, options);
-    this.afterVisualChange();
-    if (message) showMessage(message);
+    let visualRefreshError=null;
+    try{this.afterVisualChange();}catch(error){visualRefreshError=error;console.error("SiWords visual refresh failed after a successful save",error);}
+    if(visualRefreshError)showMessage("数据已保存，但界面刷新失败；请重载思源后继续",6000,"error");
+    else if(message)showMessage(message);
   }
   afterVisualChange() { this.renderManager(); this.renderDock(); this.applyHighlightStyle(); this.scheduleRefresh(30); }
 
@@ -994,7 +1364,13 @@ class SiWordsPlugin extends Plugin {
   }
   openWordEditor(initialWord = "", sentence = "", source = {}) {
     const existing = this.state.words.find((item) => item.key === canonicalKey(initialWord));
-    return this.openWordDialog(existing || this.newWordDraft({ ...source, text: initialWord, sentence }));
+    if (!existing) return this.openWordDialog(this.newWordDraft({ ...source, text: initialWord, sentence }));
+    const contextualDraft = deepClone(existing);
+    if (sentence) contextualDraft.sentence = sentence;
+    for (const key of ["sourceDocId", "sourceBlockId", "sourceTitle", "sourcePath", "sourceBox", "sourcePdfPage"]) {
+      if (source[key]) contextualDraft[key] = source[key];
+    }
+    return this.openWordDialog(contextualDraft);
   }
   availableBooks(currentBookId=""){
     const books=this.state.books.filter((book)=>!book.archived&&(book.enabled!==false||book.id===currentBookId));
@@ -1013,10 +1389,10 @@ class SiWordsPlugin extends Plugin {
           <label class="siwords-quick-add__field"><span>颜色</span><select class="b3-select" data-field="color"><option value="">跟随生词本</option>${Object.keys(COLORS).map((id)=>`<option value="${id}" ${id===draft.color?"selected":""}>● ${["","红色","橙色","黄色","绿色","蓝色","紫色"][Number(id)]}</option>`).join("")}</select></label>
         </div>
         <label class="siwords-quick-add__field"><span>别名</span><input class="b3-text-field" data-field="aliases" value="${escapeHTML((draft.aliases||[]).join(", "))}" placeholder="多个别名用逗号分隔"></label>
-        <label class="siwords-quick-add__field"><span class="siwords-quick-add__definition-label"><span>释义</span>${this.state.settings.aiEnabled?'<button type="button" class="siwords-sparkle" data-action="quick-ai" title="AI 自动填充">✦ <em>AI 自动填充</em></button>':""}</span><textarea class="b3-text-field" data-field="definition" rows="6" placeholder="输入释义，支持简单 Markdown">${escapeHTML(draft.definition)}</textarea></label>
+        <label class="siwords-quick-add__field"><span class="siwords-quick-add__definition-label"><span>完整释义 Markdown（含全部分节）</span>${this.state.settings.aiEnabled?`<span class="siwords-quick-add__ai-actions"><button type="button" class="siwords-sparkle" data-action="quick-ai" title="生成上下文释义">✦ <em>自动填充</em></button>${this.state.settings.enableVocabularyExpansion?'<button type="button" class="siwords-sparkle" data-action="quick-vocabulary-expansion" title="补充同根词、近义词和相似词（Ctrl+Alt+Shift+E）">✦ <em>词汇扩展</em></button>':""}</span>`:""}</span><textarea class="b3-text-field" data-field="definition" rows="6" placeholder="高级编辑：这里包含基础释义、词汇扩展和其他 Markdown 分节">${escapeHTML(draft.definition)}</textarea></label>
         <label class="siwords-quick-add__field"><span>原句与上下文</span><textarea class="b3-text-field" data-field="sentence" rows="3" placeholder="划词时会自动带入所在句子">${escapeHTML(draft.sentence)}</textarea></label>
         <label class="siwords-checkbox siwords-quick-add__mastered"><input type="checkbox" data-field="mastered" ${draft.mastered?"checked":""}> 已掌握</label>
-        <p class="siwords-quick-add__status" data-role="quick-status">AI 只在点击“自动填充”后发送单词与上下文。</p>
+        <p class="siwords-quick-add__status" data-role="quick-status">这是完整编辑入口，会显示全部分节；只改基础释义请使用词窗内“编辑释义”。AI 仅在主动点击时发送单词与上下文。</p>
         <div class="siwords-quick-add__actions">
           <div>${exists?'<button class="b3-button b3-button--outline siwords-danger" data-action="quick-delete">删除</button>':""}<button class="b3-button b3-button--outline" data-action="quick-speak">发音</button></div>
           <div><button class="b3-button b3-button--cancel" data-action="quick-cancel">取消</button><button class="b3-button b3-button--text" data-action="quick-save">保存</button></div>
@@ -1025,6 +1401,7 @@ class SiWordsPlugin extends Plugin {
       width: "560px",
     });
     const root = dialog.element.querySelector(".siwords-quick-add");
+    root.closest?.(".b3-dialog__container")?.classList.add("siwords-word-dialog-host");
     const readDraft = () => {
       draft.word = root.querySelector('[data-field="word"]').value.trim();
       draft.aliases = normalizeAliases(root.querySelector('[data-field="aliases"]').value);
@@ -1036,7 +1413,47 @@ class SiWordsPlugin extends Plugin {
       draft.mastered = Boolean(root.querySelector('[data-field="mastered"]').checked);
       return draft;
     };
-    root.querySelector('[data-action="quick-cancel"]').addEventListener("click",()=>dialog.destroy());
+    const clearDialogContext = () => {
+      if (this.activeWordDialogContext?.dialog === dialog) this.activeWordDialogContext = null;
+      if (this.activeWordDialog === dialog) this.activeWordDialog = null;
+    };
+    const closeDialog = () => { clearDialogContext(); dialog.destroy(); };
+    let quickAIInFlight = false;
+    const quickAIButtons = Array.from(root.querySelectorAll('[data-action="quick-ai"],[data-action="quick-vocabulary-expansion"]'));
+    const setQuickAIBusy = (busy, activeButton = null) => {
+      quickAIInFlight = busy;
+      quickAIButtons.forEach((button) => {
+        button.disabled = busy;
+        button.classList.toggle("is-loading", busy && button === activeButton);
+      });
+    };
+    const runQuickVocabularyExpansion = async (triggerButton = null) => {
+      if (quickAIInFlight) return showMessage("AI 正在处理当前单词，请稍候");
+      const current = readDraft();
+      const requestKey = canonicalKey(current.word);
+      const button = triggerButton || root.querySelector('[data-action="quick-vocabulary-expansion"]');
+      const status = root.querySelector('[data-role="quick-status"]');
+      if (!current.word) return showMessage("请先输入单词或短语");
+      setQuickAIBusy(true, button);
+      if (status) status.textContent = `正在生成词汇扩展（每类最多 ${clampVocabularyExpansionLimit(this.state.settings.vocabularyExpansionLimit)} 个）…`;
+      try {
+        const relations = await this.generateVocabularyExpansion(current.word, current.sentence, current.language);
+        if (!root.isConnected) return;
+        if (canonicalKey(root.querySelector('[data-field="word"]')?.value) !== requestKey) throw new Error("单词已改变，旧结果已丢弃，请重新生成");
+        const latest = readDraft();
+        latest.definition = upsertVocabularyExpansionSection(latest.definition, formatVocabularyExpansionMarkdown(relations));
+        latest.rawDefinition = latest.definition;
+        latest.sections = parseDefinitionSections(latest.definition);
+        root.querySelector('[data-field="definition"]').value = latest.definition;
+        if (status) status.textContent = "词汇扩展已更新；请核对拼写、分类和词义后再保存。";
+      } catch (error) {
+        if (root.isConnected && status) status.textContent = `扩展失败：${error.message || error}`;
+        if (root.isConnected) showMessage(`AI 词汇扩展失败：${error.message || error}`, 6000, "error");
+      } finally {
+        if (root.isConnected) setQuickAIBusy(false);
+      }
+    };
+    root.querySelector('[data-action="quick-cancel"]').addEventListener("click",closeDialog);
     root.querySelector('[data-action="quick-speak"]').addEventListener("click",()=>this.speak(readDraft().word));
     const quickSaveButton = root.querySelector('[data-action="quick-save"]');
     quickSaveButton.addEventListener("click",async()=>{
@@ -1049,10 +1466,10 @@ class SiWordsPlugin extends Plugin {
         const saved=await this.persistWordDraft(readDraft(),{
           onPendingSaved:()=>{
             closed=true;
-            dialog.destroy();
+            closeDialog();
           },
         });
-        if(saved&&!closed)dialog.destroy();
+        if(saved&&!closed)closeDialog();
         if(!saved&&quickSaveButton.isConnected)quickSaveButton.disabled=false;
       }catch(error){
         if(quickSaveButton.isConnected){
@@ -1063,16 +1480,18 @@ class SiWordsPlugin extends Plugin {
     });
     root.querySelector('[data-action="quick-delete"]')?.addEventListener("click",async()=>{
       if(!window.confirm(`将“${draft.word}”移到回收站？`))return;
-      deleteWordState(this.state,draft.id);await this.commitChange("已移到回收站");dialog.destroy();
+      deleteWordState(this.state,draft.id);await this.commitChange("已移到回收站");closeDialog();
     });
     root.querySelector('[data-action="quick-ai"]')?.addEventListener("click",async(event)=>{
-      const current=readDraft();const button=event.currentTarget;const status=root.querySelector('[data-role="quick-status"]');
+      if(quickAIInFlight)return showMessage("AI 正在处理当前单词，请稍候");
+      const current=readDraft();const requestKey=canonicalKey(current.word);const button=event.currentTarget;const status=root.querySelector('[data-role="quick-status"]');
       if(!current.word)return showMessage("请先输入单词或短语");
-      button.disabled=true;button.classList.add("is-loading");if(status)status.textContent="正在生成上下文释义…";
-      try{current.definition=await this.generateDefinition(current.word,current.sentence,current.language);current.rawDefinition=current.definition;current.sections=parseDefinitionSections(current.definition);root.querySelector('[data-field="definition"]').value=current.definition;if(status)status.textContent="AI 释义已生成，请检查后保存。";}
+      setQuickAIBusy(true,button);if(status)status.textContent="正在生成上下文释义…";
+      try{const definition=await this.generateDefinition(current.word,current.sentence,current.language);if(!root.isConnected)return;if(canonicalKey(root.querySelector('[data-field="word"]')?.value)!==requestKey)throw new Error("单词已改变，旧结果已丢弃，请重新生成");const latest=readDraft();latest.definition=replacePrimaryDefinitionPreservingSections(latest.definition,definition);latest.rawDefinition=latest.definition;latest.sections=parseDefinitionSections(latest.definition);root.querySelector('[data-field="definition"]').value=latest.definition;if(status)status.textContent="AI 释义已生成；其他分节与词汇扩展已保留，请检查后保存。";}
       catch(error){if(status)status.textContent=`生成失败：${error.message||error}`;showMessage(`AI 释义失败：${error.message||error}`,6000,"error");}
-      finally{button.disabled=false;button.classList.remove("is-loading");}
+      finally{if(root.isConnected)setQuickAIBusy(false);}
     });
+    root.querySelector('[data-action="quick-vocabulary-expansion"]')?.addEventListener("click",(event)=>runQuickVocabularyExpansion(event.currentTarget));
     window.setTimeout(()=>{
       if(!root.isConnected)return;
       const active=document.activeElement;
@@ -1080,7 +1499,16 @@ class SiWordsPlugin extends Plugin {
       root.querySelector(draft.word?'[data-field="definition"]':'[data-field="word"]')?.focus();
     },50);
     this.activeWordDialog = dialog;
+    this.activeWordDialogContext = { dialog, root, runVocabularyExpansion: runQuickVocabularyExpansion };
     return dialog;
+  }
+  runVocabularyExpansionShortcut() {
+    const quick = this.activeWordDialogContext;
+    if (quick?.root?.isConnected) return quick.runVocabularyExpansion();
+    this.activeWordDialogContext = null;
+    if (this.editorDraft && this.managerRoot?.querySelector?.(".siwords-editor")) return this.fillEditorWithVocabularyExpansion();
+    showMessage("请先选中单词并按 Ctrl+Alt+Shift+A 打开“添加单词”窗口，或在词库中编辑一个词条");
+    return null;
   }
   async persistWordDraft(input, options = {}) {
     const draft = normalizeWord(input, this.state.settings.currentBookId);
@@ -1095,7 +1523,7 @@ class SiWordsPlugin extends Plugin {
     draft.updatedAt=nowISO();if(!draft.createdAt)draft.createdAt=draft.updatedAt;draft.masteredAt=draft.mastered?(draft.masteredAt||nowISO()):"";
     if(existingById>=0)this.state.words.splice(existingById,1,draft);else this.state.words.push(draft);
     this.state.settings.currentBookId=draft.bookId;
-    await this.commitChange(existingById>=0?"生词已更新":"已加入生词本",{onPendingSaved:options.onPendingSaved});
+    await this.commitChange(options.message??(existingById>=0?"生词已更新":"已加入生词本"),{onPendingSaved:options.onPendingSaved});
     return true;
   }
   syncDraftFromForm(root = this.managerRoot) {
@@ -1180,7 +1608,7 @@ class SiWordsPlugin extends Plugin {
   }
   editorHTML(word) {
     return `<aside class="siwords-editor"><div class="siwords-editor__head"><div><strong>${this.state.words.some((item)=>item.id===word.id) ? "编辑生词" : "新增生词"}</strong><small>${word.sourceTitle ? `来源：${escapeHTML(word.sourceTitle)}` : "通过插件界面编辑"}</small></div><button data-action="close-editor">×</button></div><div class="siwords-editor__body"><label>单词或短语<input class="b3-text-field" data-editor-field="word" value="${escapeHTML(word.word)}"></label><label>别名（逗号分隔）<input class="b3-text-field" data-editor-field="aliases" value="${escapeHTML((word.aliases||[]).join(", "))}"></label><div class="siwords-form__row"><label>生词本<select class="b3-select" data-editor-field="book">${this.availableBooks(word.bookId)
-.map((book)=>`<option value="${escapeHTML(book.id)}" ${book.id===word.bookId?"selected":""}>${escapeHTML(book.name)}</option>`).join("")}</select></label><label>颜色<select class="b3-select" data-editor-field="color"><option value="">跟随生词本</option>${Object.keys(COLORS).map((id)=>`<option value="${id}" ${id===word.color?"selected":""}>● 颜色 ${id}</option>`).join("")}</select></label></div><label>Markdown 释义<textarea class="b3-text-field" data-editor-field="definition" rows="10">${escapeHTML(word.definition)}</textarea></label><label>原句与上下文<textarea class="b3-text-field" data-editor-field="sentence" rows="4">${escapeHTML(word.sentence)}</textarea></label><label class="siwords-checkbox"><input type="checkbox" data-editor-field="mastered" ${word.mastered?"checked":""}> 已掌握</label><div class="siwords-editor__status" data-role="editor-status">AI 只在点击后发送单词和上下文。</div></div><div class="siwords-editor__actions"><button class="b3-button b3-button--outline" data-action="editor-speak">发音</button><button class="b3-button b3-button--outline" data-action="editor-ai">AI 释义</button><span class="fn__flex-1"></span><button class="b3-button b3-button--cancel" data-action="close-editor">取消</button><button class="b3-button b3-button--text" data-action="save-editor">保存</button></div></aside>`;
+ .map((book)=>`<option value="${escapeHTML(book.id)}" ${book.id===word.bookId?"selected":""}>${escapeHTML(book.name)}</option>`).join("")}</select></label><label>颜色<select class="b3-select" data-editor-field="color"><option value="">跟随生词本</option>${Object.keys(COLORS).map((id)=>`<option value="${id}" ${id===word.color?"selected":""}>● 颜色 ${id}</option>`).join("")}</select></label></div><label>完整释义 Markdown（含全部分节）<textarea class="b3-text-field" data-editor-field="definition" rows="10">${escapeHTML(word.definition)}</textarea></label><label>原句与上下文<textarea class="b3-text-field" data-editor-field="sentence" rows="4">${escapeHTML(word.sentence)}</textarea></label><label class="siwords-checkbox"><input type="checkbox" data-editor-field="mastered" ${word.mastered?"checked":""}> 已掌握</label><div class="siwords-editor__status" data-role="editor-status">只有点击 AI 按钮或使用词汇扩展快捷键时，才会发送单词和上下文。</div></div><div class="siwords-editor__actions"><button class="b3-button b3-button--outline" data-action="editor-speak">发音</button><button class="b3-button b3-button--outline" data-action="editor-ai">AI 释义</button>${this.state.settings.aiEnabled&&this.state.settings.enableVocabularyExpansion?'<button class="b3-button b3-button--outline" data-action="editor-vocabulary-expansion" title="Ctrl+Alt+Shift+E">词汇扩展</button>':""}<span class="fn__flex-1"></span><button class="b3-button b3-button--cancel" data-action="close-editor">取消</button><button class="b3-button b3-button--text" data-action="save-editor">保存</button></div></aside>`;
   }
   booksHTML() {
     return `<div class="siwords-section-head"><div><h3>生词本</h3><p>“停用”只停止匹配与显示，不删除词条；“归档”只影响管理入口，两者相互独立。</p></div><span class="fn__flex-1"></span><button class="b3-button b3-button--text" data-action="new-book">新建生词本</button></div><div class="siwords-books">${this.state.books.sort((a,b)=>a.order-b.order).map((book)=>{const count=this.state.words.filter(w=>w.bookId===book.id).length;return `<article class="siwords-book ${book.enabled===false?"is-disabled":""}" data-book-id="${escapeHTML(book.id)}"><span class="siwords-book__dot" style="background:${COLORS[book.color]}"></span><div><strong>${escapeHTML(book.name)}</strong><small>${count} 个词${book.enabled===false?" · 已停用":""}${book.archived?" · 已归档":""}</small></div><span class="fn__flex-1"></span><button data-action="toggle-book">${book.enabled===false?"启用":"停用"}</button><button data-action="edit-book">编辑</button>${book.id!=="default"?'<button data-action="archive-book">'+(book.archived?'取消归档':'归档')+'</button><button data-action="delete-book">删除</button>':""}</article>`;}).join("")}</div>`;
@@ -1209,6 +1637,7 @@ class SiWordsPlugin extends Plugin {
         <div class="siwords-data-actions siwords-ai-actions"><button class="b3-button b3-button--text" data-action="test-ai">测试 AI 连接</button><button class="b3-button b3-button--outline" data-action="import-siyuan-ai">从思源 AI 导入为独立配置</button></div><p class="siwords-muted" data-role="ai-settings-status">测试只发送一个极小请求。</p>
       </section>
       <section class="siwords-settings__section"><h3>AI 释义</h3><label class="siwords-setting siwords-setting--column"><span><strong>释义提示词</strong><small>必须包含 {{word}}；可用 {{sentence}}、{{language}}</small></span><textarea class="b3-text-field" rows="7" data-setting="aiPrompt">${escapeHTML(s.aiPrompt)}</textarea></label><button class="b3-button b3-button--outline" data-action="restore-ai-prompt">恢复默认</button></section>
+      <section class="siwords-settings__section"><h3>AI 词汇扩展</h3><p class="siwords-settings__intro">把同根词、近义词和形近 / 易混词作为独立分节写入释义。每个词按“词条 → 释义 → 构词/辨析/区别”显示；模型只负责给候选，数量、去重和排版由插件强制执行。</p>${this.toggleHTML("enableVocabularyExpansion","启用词汇扩展","结果不会自动保存；生成分节会在下次扩展时整体替换，手工笔记请放在其他分节",s.enableVocabularyExpansion)}<label class="siwords-setting"><span><strong>每类最多</strong><small>允许 1–3 个；没有可靠结果时不凑数</small></span><input class="b3-text-field siwords-setting__short-number" type="number" min="1" max="3" step="1" data-setting="vocabularyExpansionLimit" value="${escapeHTML(s.vocabularyExpansionLimit)}"></label><label class="siwords-setting siwords-setting--column"><span><strong>词汇扩展提示词</strong><small>必须包含 {{word}} 和 {{max}}；可用 {{sentence}}、{{language}}</small></span><textarea class="b3-text-field" rows="12" data-setting="vocabularyExpansionPrompt">${escapeHTML(s.vocabularyExpansionPrompt)}</textarea></label><div class="siwords-data-actions"><button class="b3-button b3-button--outline" data-action="restore-vocabulary-expansion-prompt">恢复默认</button></div><div class="siwords-shortcut-note"><span><kbd>Ctrl</kbd><b>+</b><kbd>Alt</kbd><b>+</b><kbd>Shift</kbd><b>+</b><kbd>A</kbd> 选区打开添加窗口</span><span><kbd>Ctrl</kbd><b>+</b><kbd>Alt</kbd><b>+</b><kbd>Shift</kbd><b>+</b><kbd>E</kbd> 为当前窗口补充词汇扩展</span><small>旧版 Ctrl+Alt+A/E 与思源或其他插件冲突，0.6.4 已迁移为新命令；仍可在思源“设置 → 快捷键 → 插件 → SiWords”中修改。</small></div></section>
       <section class="siwords-settings__section"><h3>划词翻译</h3>${this.toggleHTML("enableSelectionTranslate","启用划词翻译","选中 1–500 个字符后显示翻译；旧请求不会覆盖新选择",s.enableSelectionTranslate)}<label class="siwords-setting siwords-setting--column"><span><strong>目标语言</strong><small>例如 zh-CN、en、ja</small></span><input class="b3-text-field" data-setting="translateTargetLang" value="${escapeHTML(s.translateTargetLang)}"></label><label class="siwords-setting siwords-setting--column"><span><strong>翻译提示词</strong><small>必须包含 {{text}} 和 {{to}}</small></span><textarea class="b3-text-field" rows="6" data-setting="translatePrompt">${escapeHTML(s.translatePrompt)}</textarea></label><button class="b3-button b3-button--outline" data-action="restore-translate-prompt">恢复默认</button></section>
       <section class="siwords-settings__section"><h3>释义显示</h3>${this.toggleHTML("enableSectionTabs","分节标签","定义含独立 --- 分隔线时显示标签；关闭后仍显示完整原文",s.enableSectionTabs)}${this.toggleHTML("blurDefinitions","主动回忆","默认模糊释义，悬停后显示",s.blurDefinitions)}</section>
       <section class="siwords-settings__section"><h3>划词与高亮</h3>${this.toggleHTML("enableAutoHighlight","自动高亮","高亮启用生词本中的学习词",s.enableAutoHighlight)}${this.toggleHTML("showDefinitionOnHover","悬停释义","跨节点短语也能弹出词卡",s.showDefinitionOnHover)}${this.toggleHTML("showSelectionButton","划词添加按钮","选中文本后显示加入生词本入口",s.showSelectionButton)}${this.toggleHTML("enableMasteredFeature","掌握状态","区分学习中和已掌握",s.enableMasteredFeature)}${this.toggleHTML("showMasteredHighlights","高亮已掌握词","开启后已掌握词仍匹配",s.showMasteredHighlights)}${this.toggleHTML("highlightCode","高亮代码块","默认跳过代码",s.highlightCode)}${this.toggleHTML("highlightLinks","高亮链接文字","默认跳过链接",s.highlightLinks)}
@@ -1219,10 +1648,162 @@ class SiWordsPlugin extends Plugin {
       </section>
       <section class="siwords-settings__section"><h3>发音</h3><label class="siwords-setting"><span><strong>口音</strong><small>系统语音使用</small></span><select class="b3-select" data-setting="pronunciationVariant"><option value="us" ${s.pronunciationVariant==="us"?"selected":""}>美式</option><option value="uk" ${s.pronunciationVariant==="uk"?"selected":""}>英式</option></select></label><label class="siwords-setting"><span><strong>发音方式</strong><small>自定义失败时回退系统语音</small></span><select class="b3-select" data-setting="ttsMode"><option value="browser" ${s.ttsMode==="browser"?"selected":""}>系统语音</option><option value="url" ${s.ttsMode==="url"?"selected":""}>自定义 URL</option></select></label><label class="siwords-setting siwords-setting--column"><span><strong>TTS URL 模板</strong><small>使用 {{word}}；公网仅限 HTTPS</small></span><input class="b3-text-field" data-setting="ttsTemplate" value="${escapeHTML(s.ttsTemplate)}"></label></section>
       <section class="siwords-settings__section"><h3>数据与恢复</h3><div class="siwords-data-actions"><button class="b3-button b3-button--outline" data-action="backup">立即备份</button><button class="b3-button b3-button--outline" data-action="restore-backup">恢复最近备份</button><button class="b3-button b3-button--outline" data-action="export">导出完整 JSON</button><button class="b3-button b3-button--outline" data-action="import">导入 JSON</button></div><p class="siwords-muted">API Key 不进入导出和备份。</p></section>
+      <section class="siwords-settings__section siwords-help-card"><h3>帮助与反馈</h3><p class="siwords-settings__intro">反馈会先在本机生成并由你预览；不会读取正文、PDF 内容、词库、原句、API 地址或 API Key。</p><div class="siwords-data-actions"><button type="button" class="b3-button b3-button--text" data-action="open-feedback" data-feedback-type="bug">报告问题</button><button type="button" class="b3-button b3-button--outline" data-action="open-feedback" data-feedback-type="feature">提出建议</button></div></section>
     </div>`;
   }
   aboutHTML() {
-    return `<div class="siwords-about"><h3>SiWords 0.6.3</h3><p>使用插件结构化数据作为唯一可信来源，管理页只是编辑界面，不生成第二份可编辑词库文档。</p><ul><li>多生词本、颜色、别名和掌握状态</li><li>划词、右键和命令面板添加</li><li>思源文档及文字层 PDF 高亮</li><li>悬停释义、当前文档侧栏和 TTS</li><li>插件独立 API 或思源当前模型生成上下文释义</li><li>写入恢复、滚动备份、回收站、导入导出</li><li>大词库分页、空闲时高亮与按版本自检，减少主线程长任务</li><li>公网 AI 与自定义发音地址强制使用 HTTPS</li></ul><p class="siwords-muted">不包含 Canvas、扫描 PDF OCR、移动端完整交互和多设备逐词自动合并。</p></div>`;
+    return `<div class="siwords-about"><h3>SiWords 0.6.7</h3><p>使用插件结构化数据作为唯一可信来源，管理页只是编辑界面，不生成第二份可编辑词库文档。</p><ul><li>多生词本、颜色、别名和掌握状态</li><li>划词、右键和命令面板添加；Ctrl+Alt+Shift+A 可用选区打开添加窗口</li><li>思源文档及文字层 PDF 高亮</li><li>悬停释义、当前文档侧栏和 TTS</li><li>悬浮词窗可只编辑基础释义，不覆盖词汇扩展或其他分节</li><li>鼠标移出边缘留有空间容错；桌面词条窗口也支持从四边和四角拖动缩放</li><li>插件独立 API 或思源当前模型生成上下文释义</li><li>Ctrl+Alt+Shift+E 补充同根词、近义词和形近 / 易混词，每类最多 3 个</li><li>写入恢复、滚动备份、回收站、导入导出</li><li>大词库分页、空闲时高亮与按版本自检，减少主线程长任务</li><li>公网 AI 与自定义发音地址强制使用 HTTPS</li></ul><p class="siwords-muted">快捷键可在“设置 → 快捷键 → 插件 → SiWords”修改。不包含 Canvas、扫描 PDF OCR、移动端完整交互和多设备逐词自动合并。</p><section class="siwords-about__feedback"><h4>帮助与反馈</h4><p>先预览、再复制或前往 GitHub；没有 GitHub 或离线时也能复制完整反馈。</p><div class="siwords-data-actions"><button type="button" class="b3-button b3-button--text" data-action="open-feedback" data-feedback-type="bug">报告问题</button><button type="button" class="b3-button b3-button--outline" data-action="open-feedback" data-feedback-type="feature">功能建议</button></div></section></div>`;
+  }
+  collectFeedbackDiagnostics(value = this.feedbackDraft) {
+    const draft = normalizeFeedbackDraft(value);
+    const runtime = globalThis.siyuan || {};
+    const system = runtime.config?.system || {};
+    let theme = "";
+    if (draft.includeTheme) {
+      const appearance = runtime.config?.appearance || {};
+      const dark = appearance.mode === 1 || globalThis.document?.documentElement?.dataset?.themeMode === "dark";
+      const themeName = dark ? appearance.themeDark : appearance.themeLight;
+      theme = `${themeName || "默认主题"}（${dark ? "深色" : "浅色"}）`;
+    }
+    const pluginSource = draft.includePlugins ? (this.app?.plugins || runtime.ws?.app?.plugins || runtime.plugins || []) : [];
+    const pluginItems = Array.isArray(pluginSource) ? pluginSource : Object.values(pluginSource || {});
+    const pluginNames = pluginItems
+      .filter((item) => String(item?.name || "") !== this.name)
+      .map((item) => String(item?.displayName || item?.name || "").trim())
+      .filter((name) => name && name !== this.name && name !== "SiWords")
+      .sort((a, b) => a.localeCompare(b));
+    const visiblePlugins = pluginNames.slice(0, 40);
+    if (pluginNames.length > visiblePlugins.length) visiblePlugins.push(`另有 ${pluginNames.length - visiblePlugins.length} 个`);
+    const platform = String(system.os || globalThis.navigator?.userAgentData?.platform || globalThis.navigator?.platform || "Windows（版本未公开）");
+    const osVersion = String(system.osVersion || system.platformVersion || "").trim();
+    return {
+      pluginVersion: PLUGIN_VERSION,
+      siyuanVersion: String(system.kernelVersion || system.version || runtime.config?.version || "未知"),
+      os: [platform, osVersion].filter(Boolean).join(" "),
+      theme,
+      plugins: draft.includePlugins ? (visiblePlugins.join("、") || "未检测到其他插件") : "",
+    };
+  }
+  async copyFeedbackText(text) {
+    try {
+      if (globalThis.navigator?.clipboard?.writeText) {
+        await globalThis.navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (_) {}
+    const field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.cssText = "position:fixed;left:-10000px;top:0;opacity:0";
+    document.body.appendChild(field);
+    field.select();
+    let copied = false;
+    try { copied = Boolean(document.execCommand?.("copy")); } catch (_) {}
+    field.remove();
+    return copied;
+  }
+  openFeedbackDialog(initialType = "bug") {
+    this.feedbackDraft = normalizeFeedbackDraft({ ...this.feedbackDraft, type: initialType });
+    const draft = this.feedbackDraft;
+    const options = Object.entries(FEEDBACK_TYPES).map(([id, item]) => `<option value="${id}" ${draft.type === id ? "selected" : ""}>${item.label}</option>`).join("");
+    const dialog = new Dialog({
+      title: "帮助与反馈",
+      content: `<div class="siwords-feedback siwords-ui">
+        <div class="siwords-feedback__privacy"><strong>由你决定发送什么</strong><span>仅自动填写版本信息。不会读取正文、PDF 内容、词库、原句、API 地址或 API Key。</span></div>
+        <div class="siwords-feedback__form">
+          <label class="siwords-feedback__field"><span>反馈类型</span><select class="b3-select" data-feedback-field="type">${options}</select></label>
+          <label class="siwords-feedback__field"><span>问题描述 <em>必填</em></span><textarea class="b3-text-field" rows="4" maxlength="4000" data-feedback-field="description" placeholder="你想完成什么？发生了什么？">${escapeHTML(draft.description)}</textarea></label>
+          <label class="siwords-feedback__field"><span>复现步骤</span><textarea class="b3-text-field" rows="4" maxlength="4000" data-feedback-field="steps" placeholder="1. 打开……&#10;2. 选择……&#10;3. 出现……">${escapeHTML(draft.steps)}</textarea></label>
+          <div class="siwords-feedback__grid">
+            <label class="siwords-feedback__field"><span>预期结果</span><textarea class="b3-text-field" rows="3" maxlength="2500" data-feedback-field="expected" placeholder="你原本希望看到什么？">${escapeHTML(draft.expected)}</textarea></label>
+            <label class="siwords-feedback__field"><span>实际结果</span><textarea class="b3-text-field" rows="3" maxlength="2500" data-feedback-field="actual" placeholder="实际出现了什么？">${escapeHTML(draft.actual)}</textarea></label>
+          </div>
+          <fieldset class="siwords-feedback__diagnostics"><legend>可选诊断信息</legend><label><input type="checkbox" data-feedback-field="includeTheme" ${draft.includeTheme ? "checked" : ""}> 附带当前主题名称</label><label><input type="checkbox" data-feedback-field="includePlugins" ${draft.includePlugins ? "checked" : ""}> 附带已启用的其他插件名称</label></fieldset>
+        </div>
+        <section class="siwords-feedback__preview" data-role="feedback-preview" hidden><div><strong>提交前预览</strong><small>GitHub Issue 是公开页面，请再次检查私人信息。</small></div><pre data-role="feedback-preview-text"></pre></section>
+        <p class="siwords-feedback__status" data-role="feedback-status" aria-live="polite">草稿只保留在本次 SiWords 运行期间。</p>
+        <div class="siwords-feedback__actions"><button type="button" class="b3-button b3-button--cancel" data-action="feedback-close">关闭</button><span class="fn__flex-1"></span><button type="button" class="b3-button b3-button--outline" data-action="feedback-copy">复制反馈</button><button type="button" class="b3-button b3-button--outline" data-action="feedback-preview">预览</button><button type="button" class="b3-button b3-button--text" data-action="feedback-github" disabled>前往 GitHub</button></div>
+      </div>`,
+      width: "720px",
+    });
+    dialog.element?.classList?.add("siwords-feedback-dialog-host");
+    const root = dialog.element?.querySelector?.(".siwords-feedback");
+    if (!root) return dialog;
+    const preview = root.querySelector('[data-role="feedback-preview"]');
+    const previewText = root.querySelector('[data-role="feedback-preview-text"]');
+    const status = root.querySelector('[data-role="feedback-status"]');
+    const githubButton = root.querySelector('[data-action="feedback-github"]');
+    let previewSignature = "";
+    const syncDraft = () => {
+      this.feedbackDraft = normalizeFeedbackDraft({
+        type: root.querySelector('[data-feedback-field="type"]').value,
+        description: root.querySelector('[data-feedback-field="description"]').value,
+        steps: root.querySelector('[data-feedback-field="steps"]').value,
+        expected: root.querySelector('[data-feedback-field="expected"]').value,
+        actual: root.querySelector('[data-feedback-field="actual"]').value,
+        includeTheme: root.querySelector('[data-feedback-field="includeTheme"]').checked,
+        includePlugins: root.querySelector('[data-feedback-field="includePlugins"]').checked,
+      });
+      return this.feedbackDraft;
+    };
+    const invalidatePreview = () => {
+      syncDraft();
+      previewSignature = "";
+      githubButton.disabled = true;
+      preview.hidden = true;
+      status.textContent = "内容已修改，请重新预览后再前往 GitHub。";
+    };
+    root.querySelectorAll("[data-feedback-field]").forEach((control) => {
+      control.addEventListener("input", invalidatePreview);
+      control.addEventListener("change", invalidatePreview);
+    });
+    root.querySelector('[data-action="feedback-close"]').addEventListener("click", () => { syncDraft(); dialog.destroy(); });
+    root.querySelector('[data-action="feedback-preview"]').addEventListener("click", () => {
+      const current = syncDraft();
+      previewText.textContent = buildFeedbackReport(current, this.collectFeedbackDiagnostics(current));
+      preview.hidden = false;
+      previewSignature = feedbackDraftSignature(current);
+      githubButton.disabled = false;
+      status.textContent = "预览已更新。确认无私人信息后可前往 GitHub。";
+      preview.scrollIntoView?.({ block: "nearest" });
+    });
+    root.querySelector('[data-action="feedback-copy"]').addEventListener("click", async () => {
+      const current = syncDraft();
+      const copied = await this.copyFeedbackText(buildFeedbackReport(current, this.collectFeedbackDiagnostics(current)));
+      status.textContent = copied ? "反馈内容已复制。" : "无法自动复制，请先预览并手动选择文本。";
+    });
+    githubButton.addEventListener("click", async () => {
+      const current = syncDraft();
+      if (previewSignature !== feedbackDraftSignature(current)) {
+        githubButton.disabled = true;
+        status.textContent = "请先预览当前内容。";
+        return;
+      }
+      if (!current.description.trim()) {
+        status.textContent = "请先填写问题描述。";
+        root.querySelector('[data-feedback-field="description"]').focus();
+        return;
+      }
+      const diagnostics = this.collectFeedbackDiagnostics(current);
+      const report = buildFeedbackReport(current, diagnostics);
+      const copyPromise = this.copyFeedbackText(report);
+      if (globalThis.navigator?.onLine === false) {
+        const copied = await copyPromise;
+        status.textContent = copied ? "当前离线，反馈内容已复制；联网后可粘贴到 GitHub。" : "当前离线，请联网后再试。";
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = buildFeedbackIssueUrl(current, diagnostics);
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      const copied = await copyPromise;
+      status.textContent = copied ? "反馈已复制并打开 GitHub；若页面未打开，可手动粘贴。" : "已尝试打开 GitHub；若页面未打开，请稍后重试。";
+    });
+    root.querySelector('[data-feedback-field="description"]')?.focus();
+    return dialog;
   }
   bindManager(root) {
     root.querySelectorAll("[data-view]").forEach((button)=>button.addEventListener("click",()=>{this.syncDraftFromForm(root);this.managerView=button.dataset.view;this.managerPage=0;this.renderManager();}));
@@ -1234,6 +1815,7 @@ class SiWordsPlugin extends Plugin {
     root.querySelector('[data-action="save-editor"]')?.addEventListener("click",()=>this.saveEditor());
     root.querySelector('[data-action="editor-speak"]')?.addEventListener("click",()=>{this.syncDraftFromForm(root);this.speak(this.editorDraft.word);});
     root.querySelector('[data-action="editor-ai"]')?.addEventListener("click",(event)=>this.fillEditorWithAI(event));
+    root.querySelector('[data-action="editor-vocabulary-expansion"]')?.addEventListener("click",(event)=>this.fillEditorWithVocabularyExpansion(event));
     root.querySelector('[data-action="new-book"]')?.addEventListener("click",()=>this.openBookDialog());
     root.querySelectorAll("[data-word-id]").forEach((row)=>this.bindRowActions(row));
     root.querySelectorAll("[data-book-id]").forEach((row)=>this.bindBookActions(row));
@@ -1243,6 +1825,7 @@ class SiWordsPlugin extends Plugin {
     root.querySelector('[data-action="test-ai"]')?.addEventListener("click",()=>this.testAIConnection());
     root.querySelector('[data-action="import-siyuan-ai"]')?.addEventListener("click",()=>this.importAIFromSiyuan());
     root.querySelector('[data-action="restore-ai-prompt"]')?.addEventListener("click",async()=>{this.state.settings.aiPrompt=DEFAULT_AI_PROMPT;this.aiCache.clear();await this.commitChange("已恢复默认 AI 提示词");});
+    root.querySelector('[data-action="restore-vocabulary-expansion-prompt"]')?.addEventListener("click",async()=>{this.state.settings.vocabularyExpansionPrompt=DEFAULT_VOCABULARY_EXPANSION_PROMPT;this.aiCache.clear();await this.commitChange("已恢复默认词汇扩展提示词");});
     root.querySelector('[data-action="restore-translate-prompt"]')?.addEventListener("click",async()=>{this.state.settings.translatePrompt=DEFAULT_TRANSLATE_PROMPT;this.state.settings.selectionTranslate.prompt=DEFAULT_TRANSLATE_PROMPT;this.aiCache.clear();await this.commitChange("已恢复默认翻译提示词");});
     root.querySelector('[data-action="scope-add-current"]')?.addEventListener("click",async()=>{const info=this.surfaceInfo(this.activeSurfaceRoot());if(!info.docId&&!info.path)return showMessage("当前没有可识别的思源文档");const rule=normalizeScopeRule({id:info.docId,path:info.path,box:info.box,descendants:false});if(!rule)return;const duplicate=(this.state.settings.scopeRules||[]).some((item)=>(rule.id&&item.id===rule.id)||(rule.path&&item.path===rule.path&&item.box===rule.box));if(duplicate)return showMessage("当前文档已在范围列表中");this.state.settings.scopeRules.push(rule);await this.commitChange("已加入当前文档范围");});
     root.querySelectorAll('[data-action="scope-remove"]').forEach((button)=>button.addEventListener("click",async()=>{this.state.settings.scopeRules.splice(Number(button.dataset.index),1);await this.commitChange("已移除文档范围");}));
@@ -1250,6 +1833,7 @@ class SiWordsPlugin extends Plugin {
     root.querySelector('[data-action="restore-backup"]')?.addEventListener("click",()=>this.restoreLatestBackup());
     root.querySelectorAll('[data-action="export"]').forEach((button)=>button.addEventListener("click",()=>this.exportLibrary()));
     root.querySelector('[data-action="import"]')?.addEventListener("click",()=>this.importLibrary());
+    root.querySelectorAll('[data-action="open-feedback"]').forEach((button)=>button.addEventListener("click",()=>this.openFeedbackDialog(button.dataset.feedbackType||"bug")));
     root.querySelector('[data-action="prev-page"]')?.addEventListener("click",()=>{this.managerPage=Math.max(0,this.managerPage-1);this.renderManager();});
     root.querySelector('[data-action="next-page"]')?.addEventListener("click",()=>{this.managerPage+=1;this.renderManager();});
     this.bindSectionTabs(root);
@@ -1287,11 +1871,20 @@ class SiWordsPlugin extends Plugin {
     this.state.settings.currentBookId=draft.bookId;this.setEditorDraft(null);await this.commitChange(existingById>=0?"生词已更新":"已加入生词本");
   }
   async fillEditorWithAI(event) {
+    if(this.editorAIInFlight)return showMessage("AI 正在处理当前单词，请稍候");
     this.syncDraftFromForm();if(!this.editorDraft?.word)return showMessage("请先输入单词或短语");
-    const status=this.managerRoot?.querySelector('[data-role="editor-status"]');event.currentTarget.disabled=true;if(status)status.textContent="正在生成上下文释义…";
-    try{this.editorDraft.definition=await this.generateDefinition(this.editorDraft.word,this.editorDraft.sentence,this.editorDraft.language);this.editorDraft.rawDefinition=this.editorDraft.definition;this.editorDraft.sections=parseDefinitionSections(this.editorDraft.definition);this.editorOriginal="__dirty__";this.renderManager();const next=this.managerRoot?.querySelector('[data-role="editor-status"]');if(next)next.textContent="AI 释义已生成，请检查后保存。";}
+    const requestedKey=canonicalKey(this.editorDraft.word);const status=this.managerRoot?.querySelector('[data-role="editor-status"]');const aiButtons=Array.from(this.managerRoot?.querySelectorAll?.('[data-action="editor-ai"],[data-action="editor-vocabulary-expansion"]')||[]);this.editorAIInFlight=true;aiButtons.forEach((button)=>button.disabled=true);if(status)status.textContent="正在生成上下文释义…";
+    try{const definition=await this.generateDefinition(this.editorDraft.word,this.editorDraft.sentence,this.editorDraft.language);const liveWord=this.managerRoot?.querySelector?.('[data-editor-field="word"]')?.value;if(canonicalKey(liveWord)!==requestedKey)throw new Error("单词已改变，旧结果已丢弃，请重新生成");this.syncDraftFromForm();this.editorDraft.definition=replacePrimaryDefinitionPreservingSections(this.editorDraft.definition,definition);this.editorDraft.rawDefinition=this.editorDraft.definition;this.editorDraft.sections=parseDefinitionSections(this.editorDraft.definition);this.editorOriginal="__dirty__";this.renderManager();const next=this.managerRoot?.querySelector('[data-role="editor-status"]');if(next)next.textContent="AI 释义已生成；其他分节与词汇扩展已保留，请检查后保存。";}
     catch(error){if(status)status.textContent=`生成失败：${error.message||error}`;}
-    finally{if(event.currentTarget?.isConnected)event.currentTarget.disabled=false;}
+    finally{this.editorAIInFlight=false;aiButtons.forEach((button)=>{if(button.isConnected)button.disabled=false;});}
+  }
+  async fillEditorWithVocabularyExpansion(event = null) {
+    if(this.editorAIInFlight)return showMessage("AI 正在处理当前单词，请稍候");
+    this.syncDraftFromForm();if(!this.editorDraft?.word)return showMessage("请先输入单词或短语");
+    const requestedKey=canonicalKey(this.editorDraft.word);const status=this.managerRoot?.querySelector('[data-role="editor-status"]');const aiButtons=Array.from(this.managerRoot?.querySelectorAll?.('[data-action="editor-ai"],[data-action="editor-vocabulary-expansion"]')||[]);this.editorAIInFlight=true;aiButtons.forEach((button)=>button.disabled=true);if(status)status.textContent=`正在生成词汇扩展（每类最多 ${clampVocabularyExpansionLimit(this.state.settings.vocabularyExpansionLimit)} 个）…`;
+    try{const relations=await this.generateVocabularyExpansion(this.editorDraft.word,this.editorDraft.sentence,this.editorDraft.language);const liveWord=this.managerRoot?.querySelector?.('[data-editor-field="word"]')?.value;if(canonicalKey(liveWord)!==requestedKey)throw new Error("单词已改变，旧结果已丢弃，请重新生成");this.syncDraftFromForm();this.editorDraft.definition=upsertVocabularyExpansionSection(this.editorDraft.definition,formatVocabularyExpansionMarkdown(relations));this.editorDraft.rawDefinition=this.editorDraft.definition;this.editorDraft.sections=parseDefinitionSections(this.editorDraft.definition);this.editorOriginal="__dirty__";this.renderManager();const next=this.managerRoot?.querySelector('[data-role="editor-status"]');if(next)next.textContent="词汇扩展已更新；请核对拼写、分类和词义后再保存。";}
+    catch(error){if(status)status.textContent=`扩展失败：${error.message||error}`;showMessage(`AI 词汇扩展失败：${error.message||error}`,6000,"error");}
+    finally{this.editorAIInFlight=false;aiButtons.forEach((button)=>{if(button.isConnected)button.disabled=false;});}
   }
   async saveSetting(control) {
     const key=control.dataset.setting;
@@ -1301,10 +1894,12 @@ class SiWordsPlugin extends Plugin {
     if(key==="ttsTemplate"&&value){try{safeTtsUrl(value,"test");}catch(error){showMessage(error.message,4500,"error");this.renderManager();return;}}
     if(key==="aiApiUrl"&&value){try{safeRemoteUrl(value,"API 地址");}catch(error){showMessage(error.message,4500,"error");this.renderManager();return;}}
     if(key==="aiPrompt"&&!String(value).includes("{{word}}")){showMessage("释义提示词必须包含 {{word}}",4500,"error");this.renderManager();return;}
+    if(key==="vocabularyExpansionPrompt"&&(!String(value).includes("{{word}}")||!String(value).includes("{{max}}"))){showMessage("词汇扩展提示词必须包含 {{word}} 和 {{max}}",4500,"error");this.renderManager();return;}
     if(key==="translatePrompt"&&(!String(value).includes("{{text}}")||(!String(value).includes("{{to}}")&&!String(value).includes("{{targetLang}}")))){showMessage("翻译提示词必须包含 {{text}} 和 {{to}}",4500,"error");this.renderManager();return;}
     if(key==="aiExtraParams"){try{mergeExtraParams({},String(value));}catch(error){showMessage(error.message,5000,"error");this.renderManager();return;}}
     if(key==="aiRetries")value=Math.max(0,Math.min(2,Number(value)||0));
     if(key==="aiCacheMinutes")value=Math.max(0,Math.min(1440,Number(value)||0));
+    if(key==="vocabularyExpansionLimit")value=clampVocabularyExpansionLimit(value);
     this.state.settings[key]=value;
     if(key==="enableSelectionTranslate")this.state.settings.selectionTranslate.enabled=Boolean(value);
     if(key==="translateTargetLang")this.state.settings.selectionTranslate.targetLang=String(value||"zh-CN");
@@ -1321,7 +1916,7 @@ class SiWordsPlugin extends Plugin {
         if(modelControl)modelControl.value=defaults.model;
       }
     }
-    if(["aiProvider","aiApiUrl","aiModel","aiPrompt","aiExtraParams","translateTargetLang","translatePrompt"].includes(key))this.aiCache.clear();
+    if(["aiProvider","aiApiUrl","aiModel","aiPrompt","vocabularyExpansionPrompt","vocabularyExpansionLimit","aiExtraParams","translateTargetLang","translatePrompt"].includes(key))this.aiCache.clear();
     this.rebuildMatcher();await this.saveState("设置已保存");this.renderDock();this.applyHighlightStyle();this.scheduleRefresh(30);
     if(["aiSource","scopeMode"].includes(key))this.renderManager();
     showMessage("设置已保存");
@@ -1359,7 +1954,7 @@ class SiWordsPlugin extends Plugin {
   }
   async runSelfTest() {
     const cached=await this.safeLoad("siwords-selftest.json");
-    if(cached?.version===PLUGIN_VERSION&&cached?.passed)return{...cached,reused:true};
+    if(cached?.version===PLUGIN_VERSION&&cached?.passed&&cached?.shortcuts?.schema===1)return{...cached,reused:true};
     const report = { version: PLUGIN_VERSION, at: nowISO(), passed: false, checks: {}, errors: [] };
     const previous = { root: this.managerRoot, draft: this.editorDraft, original: this.editorOriginal, view: this.managerView };
     let host;
@@ -1378,7 +1973,11 @@ class SiWordsPlugin extends Plugin {
       const geminiShape = buildAIRequest({ provider: "gemini", apiUrl: "https://generativelanguage.googleapis.com/v1beta", apiKey: "test", model: "mock" }, "OK");
       report.checks.aiRequestShapes = openaiShape.endpoint.endsWith("/chat/completions") && claudeShape.endpoint.endsWith("/v1/messages") && geminiShape.endpoint.includes(":generateContent");
       report.checks.markdownSafe = !renderMarkdown("<script>x</script>").includes("<script>");
-      report.passed = ["dom", "cssHighlights", "matcherBoundary", "crossNodeRange", "managerRender", "aiRequestShapes", "markdownSafe"].every((key) => report.checks[key]);
+      const runtimeKeymap=globalThis.siyuan?.config?.keymap?.plugin?.[this.name];
+      const binding=(key)=>String(runtimeKeymap?.[key]?.custom||runtimeKeymap?.[key]?.default||"");
+      report.shortcuts={schema:1,runtimeKeymapAvailable:Boolean(runtimeKeymap),add:binding(ADD_WORD_COMMAND_KEY),expand:binding(EXPAND_WORD_COMMAND_KEY)};
+      report.checks.shortcutCommands=!runtimeKeymap||(report.shortcuts.add===ADD_WORD_HOTKEY&&report.shortcuts.expand===EXPAND_WORD_HOTKEY);
+      report.passed = ["dom", "cssHighlights", "matcherBoundary", "crossNodeRange", "managerRender", "aiRequestShapes", "markdownSafe", "shortcutCommands"].every((key) => report.checks[key]);
     } catch (error) { report.errors.push(String(error?.stack || error)); }
     finally {
       host?.remove(); this.managerRoot = previous.root; this.editorDraft = previous.draft; this.editorOriginal = previous.original; this.managerView = previous.view;
@@ -1613,9 +2212,20 @@ class SiWordsPlugin extends Plugin {
     this.selectionActive=Boolean(selection&&selection.rangeCount>0&&!selection.isCollapsed);
     return this.selectionActive;
   }
+  selectionInsidePinnedPopover(){
+    const popover=this.activePopoverElement;
+    const selection=window.getSelection?.();
+    return Boolean(
+      popover?.isConnected&&popover.__siwordsPinned&&
+      selection&&selection.rangeCount>0&&!selection.isCollapsed&&
+      selection.anchorNode&&selection.focusNode&&
+      popover.contains(selection.anchorNode)&&popover.contains(selection.focusNode)
+    );
+  }
   onSelectionChange(){
     if(this.updateSelectionState()){
-      this.cancelHoverInspection();this.hidePopover();
+      this.cancelHoverInspection();
+      if(!this.selectionInsidePinnedPopover())this.hidePopover();
     }
   }
   hasActiveSelection(){return Boolean(this.selectionActive);}
@@ -1623,6 +2233,7 @@ class SiWordsPlugin extends Plugin {
     const target=event?.target;
     if(event?.type==="resize")this.captureViewportMetrics();
     if(event?.type==="scroll"&&target instanceof Element&&target.closest(".siwords-popover,.siwords-translate-popover,.siwords-float"))return;
+    if(this.activePopoverElement?.__siwordsPrimaryEdit)return;
     this.cancelHoverInspection();this.cancelSelectionIntent();this.hidePopover();this.hideTranslationPopover();this.removeFloat();
   }
   onMouseDown(event){
@@ -1632,9 +2243,31 @@ class SiWordsPlugin extends Plugin {
     if(!event.target?.closest?.(".siwords-popover")){this.cancelHoverInspection();this.hidePopover();}
     if(!event.target?.closest?.(".siwords-translate-popover"))this.hideTranslationPopover();
   }
+  isWithinPopoverRetentionZone(point){
+    const popover=this.activePopoverElement;
+    if(!point||!popover?.isConnected)return false;
+    const x=Number(point.x);const y=Number(point.y);
+    if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+    if(pointRectDistanceSquared(x,y,popover.getBoundingClientRect())<=POPOVER_EXIT_DISTANCE*POPOVER_EXIT_DISTANCE)return true;
+    return this.activePopoverHitRects.some((rect)=>pointRectDistanceSquared(x,y,rect)<=POPOVER_WORD_RETENTION_DISTANCE*POPOVER_WORD_RETENTION_DISTANCE);
+  }
   onPointerMove(event){
     const target=event.target;
+    const isMouse=!event.pointerType||event.pointerType==="mouse";
+    if(isMouse&&Number.isFinite(Number(event.clientX))&&Number.isFinite(Number(event.clientY)))this.lastPopoverPointer={x:Number(event.clientX),y:Number(event.clientY)};
+    if(this.popoverResizeSession?.element?.isConnected||this.activePopoverElement?.__siwordsPinned){
+      this.cancelHoverInspection();
+      if(this.hideTimer)window.clearTimeout(this.hideTimer);
+      this.hideTimer=null;
+      return;
+    }
     if(target?.closest?.(".siwords-popover,.siwords-translate-popover,.siwords-float")){
+      this.cancelHoverInspection();
+      if(this.hideTimer)window.clearTimeout(this.hideTimer);
+      this.hideTimer=null;
+      return;
+    }
+    if(isMouse&&this.activePopoverElement?.isConnected&&this.isWithinPopoverRetentionZone(this.lastPopoverPointer)){
       this.cancelHoverInspection();
       if(this.hideTimer)window.clearTimeout(this.hideTimer);
       this.hideTimer=null;
@@ -1693,24 +2326,66 @@ class SiWordsPlugin extends Plugin {
     this.activePopoverHitRects=hitRects;
     return popover;
   }
-  hidePopoverSoon(){
+  hidePopoverSoon(point=this.lastPopoverPointer){
+    if(this.popoverResizeSession?.element?.isConnected||this.activePopoverElement?.__siwordsPinned)return;
+    if(point&&this.isWithinPopoverRetentionZone(point)){
+      if(this.hideTimer)window.clearTimeout(this.hideTimer);
+      this.hideTimer=null;
+      return;
+    }
     if(this.hideTimer)return;
-    this.hideTimer=window.setTimeout(()=>{this.hideTimer=null;this.hidePopover();},320);
+    const owner=this.activePopoverElement;
+    this.hideTimer=window.setTimeout(()=>{
+      this.hideTimer=null;
+      if(owner!==this.activePopoverElement||owner?.__siwordsPinned)return;
+      if(this.lastPopoverPointer&&this.isWithinPopoverRetentionZone(this.lastPopoverPointer))return;
+      this.hidePopover();
+    },POPOVER_HIDE_DELAY);
   }
-  hidePopover(){
+  hidePopover(options={}){
     if(this.hideTimer)window.clearTimeout(this.hideTimer);this.hideTimer=null;
+    if(this.activePopoverElement?.__siwordsPrimaryEdit&&options.force!==true){
+      if(!this.cancelPopoverPrimaryDefinitionEdit(this.activePopoverElement,{confirmDiscard:true}))return false;
+    }
     if(this.activePopoverElement)this.disposeFloatingElement(this.activePopoverElement);
     this.activePopoverElement=null;this.activePopoverWordId="";this.activePopoverHitRects=[];
+    this.lastPopoverPointer=null;
+    return true;
   }
-  definitionHTML(word){
+  primaryDefinitionDisplayHTML(content,options={}){
+    const value=String(content||"");const empty=!value.trim();const editable=options.editable===true;
+    if(empty)return `<div class="siwords-definition-empty"><strong>还没有基础释义</strong><span>${editable?"点击“释义”或下方按钮即可填写；词汇扩展和其他分节不会改变。":"词汇扩展和其他分节仍完整保留。"}</span>${editable?'<button type="button" data-action="edit-primary-definition">填写基础释义</button>':""}</div>`;
+    return `${editable?'<div class="siwords-primary-definition__toolbar"><button type="button" data-action="edit-primary-definition" title="只编辑基础释义，不修改词汇扩展">✎ 编辑释义</button></div>':""}<div class="siwords-primary-definition__content">${renderMarkdown(value)}</div>`;
+  }
+  definitionHTML(word,options={}){
     const raw=String(word?.rawDefinition??word?.definition??"");
-    const sections=Array.isArray(word?.sections)&&word.sections.length?word.sections:parseDefinitionSections(raw);
-    const key=JSON.stringify([word?.id||word?.word||"",word?.updatedAt||"",raw,this.state.settings.enableSectionTabs!==false,this.state.settings.blurDefinitions===true]);
+    const editablePrimary=options.editablePrimary===true;
+    const tabsEnabled=this.state.settings.enableSectionTabs!==false;
+    const parsedSections=parseDefinitionSections(raw);
+    if(!tabsEnabled){
+      const html=`<div class="siwords-definition ${this.state.settings.blurDefinitions?"is-blurred":""}">${renderMarkdown(raw)}</div>`;
+      return html;
+    }
+    const hasAnyPrimaryTitle=parsedSections.some((section)=>section.title==="释义");
+    const hasVocabularyExpansion=parsedSections.some((section)=>section.title===VOCABULARY_EXPANSION_TITLE);
+    const needsVirtualPrimary=!hasAnyPrimaryTitle&&hasVocabularyExpansion;
+    const sections=needsVirtualPrimary?[{title:"释义",content:"",virtualEmpty:true},...parsedSections]:parsedSections;
+    if(!sections.length)sections.push({title:"释义",content:"",virtualEmpty:true});
+    const key=JSON.stringify([word?.id||word?.word||"",word?.updatedAt||"",raw,tabsEnabled,this.state.settings.blurDefinitions===true,editablePrimary]);
     const cached=this.definitionCache?.get?.(key);
     if(cached!==undefined){this.definitionCache.delete(key);this.definitionCache.set(key,cached);return cached;}
-    const html=!this.state.settings.enableSectionTabs||sections.length<2
-      ?`<div class="siwords-definition ${this.state.settings.blurDefinitions?"is-blurred":""}">${renderMarkdown(raw)}</div>`
-      :`<div class="siwords-section-tabs" role="tablist">${sections.map((section,index)=>`<button type="button" class="siwords-section-tab ${index===0?"is-active":""}" data-section-index="${index}" role="tab" aria-selected="${index===0?"true":"false"}">${escapeHTML(section.title)}</button>`).join("")}</div><div class="siwords-section-panels">${sections.map((section,index)=>`<div class="siwords-section-panel siwords-definition ${this.state.settings.blurDefinitions?"is-blurred":""}" data-section-panel="${index}" ${index===0?"":"hidden"}>${renderMarkdown(section.content)}</div>`).join("")}</div>`;
+    const showTabs=sections.length>=2;
+    const activeIndex=needsVirtualPrimary&&parsedSections.length?1:0;
+    const panelHTML=(section,index)=>{
+      const primary=index===0&&section.title==="释义";
+      const content=primary?this.primaryDefinitionDisplayHTML(section.content,{editable:editablePrimary}):renderMarkdown(section.content);
+      const kind=primary?' data-section-kind="primary"':"";
+      const empty=primary?` data-primary-empty="${section.virtualEmpty||!String(section.content||"").trim()?"true":"false"}"`:"";
+      return `<div class="siwords-section-panel siwords-definition ${section.title===VOCABULARY_EXPANSION_TITLE?"siwords-definition--vocabulary":""} ${this.state.settings.blurDefinitions?"is-blurred":""}" data-section-panel="${index}"${kind}${empty} role="tabpanel" ${index===activeIndex?"":"hidden"}>${content}</div>`;
+    };
+    const html=!showTabs
+      ?`<div class="siwords-definition ${this.state.settings.blurDefinitions?"is-blurred":""}" data-section-kind="primary" data-primary-empty="${sections[0].virtualEmpty||!String(sections[0].content||"").trim()?"true":"false"}">${this.primaryDefinitionDisplayHTML(sections[0].content,{editable:editablePrimary})}</div>`
+      :`<div class="siwords-section-tabs" role="tablist">${sections.map((section,index)=>{const active=index===activeIndex;const primary=index===0&&section.title==="释义";const label=section.title===VOCABULARY_EXPANSION_TITLE?"✦ 词汇扩展":section.title;return `<button type="button" class="siwords-section-tab ${active?"is-active":""}" data-section-index="${index}"${primary?' data-section-kind="primary"':""}${primary?` data-primary-empty="${section.virtualEmpty||!String(section.content||"").trim()?"true":"false"}"`:""} role="tab" aria-selected="${active?"true":"false"}">${escapeHTML(label)}</button>`;}).join("")}</div><div class="siwords-section-panels">${sections.map(panelHTML).join("")}</div>`;
     this.definitionCache||=new Map();this.definitionCache.set(key,html);
     while(this.definitionCache.size>600)this.definitionCache.delete(this.definitionCache.keys().next().value);
     return html;
@@ -1722,6 +2397,120 @@ class SiWordsPlugin extends Plugin {
       host.querySelectorAll(".siwords-section-tab").forEach((item)=>{const active=item===button;item.classList.toggle("is-active",active);item.setAttribute("aria-selected",active?"true":"false");});
       host.querySelectorAll("[data-section-panel]").forEach((panel)=>{panel.hidden=panel.dataset.sectionPanel!==index;});
     }));
+  }
+  primaryDefinitionEditorHTML(value){
+    return `<div class="siwords-inline-definition-editor"><label><span>基础释义</span><textarea class="b3-text-field" data-role="primary-definition-input" rows="8" placeholder="输入基础释义（支持 Markdown）">${escapeHTML(value)}</textarea></label><p data-role="primary-definition-status" aria-live="polite">只修改基础释义，不会覆盖“词汇扩展”或其他分节。</p><div class="siwords-inline-definition-editor__actions"><button type="button" class="b3-button b3-button--cancel" data-action="cancel-primary-definition">取消</button><button type="button" class="b3-button b3-button--text" data-action="save-primary-definition" disabled>保存释义</button></div></div>`;
+  }
+  beginPopoverPrimaryDefinitionEdit(popover,wordId){
+    if(!popover?.isConnected)return false;
+    if(popover.__siwordsPrimaryEdit){popover.__siwordsPrimaryEdit.textarea?.focus();return true;}
+    const word=this.state.words.find((item)=>item.id===wordId);
+    const panel=popover.querySelector('[data-section-kind="primary"]:not(.siwords-section-tab)');
+    if(!word||!panel){showMessage("未找到可编辑的基础释义",4000,"error");return false;}
+    const value=extractPrimaryDefinition(word.rawDefinition??word.definition);
+    const state={
+      wordId, panel, originalHTML:panel.innerHTML, wasBlurred:panel.classList.contains("is-blurred"),
+      initialValue:value, dirty:false, saving:false, previousPinned:Boolean(popover.__siwordsPinned), textarea:null,
+    };
+    popover.__siwordsPrimaryEdit=state;
+    popover.__siwordsPinned=true;
+    popover.classList.add("is-editing-primary");
+    panel.classList.remove("is-blurred");
+    panel.innerHTML=this.primaryDefinitionEditorHTML(value);
+    const textarea=panel.querySelector('[data-role="primary-definition-input"]');
+    state.textarea=textarea;
+    const saveButton=panel.querySelector('[data-action="save-primary-definition"]');
+    textarea.addEventListener("input",()=>{state.dirty=textarea.value!==state.initialValue;if(saveButton)saveButton.disabled=!state.dirty;});
+    textarea.addEventListener("keydown",(event)=>{
+      if(event.key==="Enter"&&(event.ctrlKey||event.metaKey)){
+        event.preventDefault();
+        this.savePopoverPrimaryDefinition(popover);
+      }
+    });
+    panel.querySelector('[data-action="cancel-primary-definition"]').addEventListener("click",()=>this.cancelPopoverPrimaryDefinitionEdit(popover,{confirmDiscard:true}));
+    panel.querySelector('[data-action="save-primary-definition"]').addEventListener("click",()=>this.savePopoverPrimaryDefinition(popover));
+    popover.querySelector('[data-action="master"]')?.setAttribute("disabled","");
+    window.setTimeout(()=>textarea?.isConnected&&textarea.focus(),0);
+    return true;
+  }
+  cancelPopoverPrimaryDefinitionEdit(popover,options={}){
+    const state=popover?.__siwordsPrimaryEdit;
+    if(!state)return true;
+    if(state.saving){showMessage("基础释义正在保存，请稍候");return false;}
+    if(options.confirmDiscard!==false&&state.dirty&&!window.confirm("基础释义尚未保存，要放弃修改吗？"))return false;
+    if(state.panel?.isConnected){
+      state.panel.innerHTML=state.originalHTML;
+      state.panel.classList.toggle("is-blurred",state.wasBlurred);
+    }
+    popover.__siwordsPrimaryEdit=null;
+    popover.classList.remove("is-editing-primary");
+    popover.querySelector('[data-action="master"]')?.removeAttribute("disabled");
+    popover.__siwordsPinned=state.previousPinned||Boolean(popover.__siwordsManualResize);
+    state.panel?.querySelector?.('[data-action="edit-primary-definition"]')?.focus?.();
+    return true;
+  }
+  async savePopoverPrimaryDefinition(popover){
+    const state=popover?.__siwordsPrimaryEdit;
+    if(!state||state.saving)return false;
+    const textarea=state.textarea;
+    const status=state.panel?.querySelector?.('[data-role="primary-definition-status"]');
+    const value=String(textarea?.value||"");
+    if(value===state.initialValue){this.cancelPopoverPrimaryDefinitionEdit(popover,{confirmDiscard:false});return true;}
+    const validationError=primaryDefinitionInputError(value);
+    if(validationError){if(status)status.textContent=validationError;textarea?.focus();return false;}
+    const latest=this.state.words.find((item)=>item.id===state.wordId);
+    if(!latest){if(status)status.textContent="词条已不存在，无法保存。";return false;}
+    const originalWord=deepClone(latest);
+    const originalCurrentBookId=this.state.settings.currentBookId;
+    let attemptedDefinition="";
+    let pendingSaved=false;
+    state.saving=true;
+    state.panel?.querySelectorAll?.("button,textarea").forEach((item)=>{item.disabled=true;});
+    if(status)status.textContent="正在安全保存基础释义…";
+    try{
+      const draft=deepClone(latest);
+      draft.definition=replacePrimaryDefinitionPreservingSections(latest.rawDefinition??latest.definition,value);
+      draft.rawDefinition=draft.definition;
+      draft.sections=parseDefinitionSections(draft.definition);
+      attemptedDefinition=draft.rawDefinition;
+      const saved=await this.persistWordDraft(draft,{message:"基础释义已保存，词汇扩展未改变",onPendingSaved:()=>{pendingSaved=true;}});
+      if(!saved)throw new Error("基础释义未保存");
+      const stored=this.state.words.find((item)=>item.id===state.wordId)||draft;
+      const primary=extractPrimaryDefinition(stored.rawDefinition??stored.definition);
+      const empty=!primary.trim();
+      state.panel.innerHTML=this.primaryDefinitionDisplayHTML(primary,{editable:true});
+      state.panel.dataset.primaryEmpty=empty?"true":"false";
+      state.panel.classList.toggle("is-blurred",state.wasBlurred);
+      popover.querySelector('.siwords-section-tab[data-section-kind="primary"]')?.setAttribute("data-primary-empty",empty?"true":"false");
+      popover.__siwordsPrimaryEdit=null;
+      popover.classList.remove("is-editing-primary");
+      popover.querySelector('[data-action="master"]')?.removeAttribute("disabled");
+      popover.__siwordsPinned=state.previousPinned||Boolean(popover.__siwordsManualResize);
+      state.panel?.querySelector?.('[data-action="edit-primary-definition"]')?.focus?.();
+      return true;
+    }catch(error){
+      const currentIndex=this.state.words.findIndex((item)=>item.id===state.wordId);
+      const current=currentIndex>=0?this.state.words[currentIndex]:null;
+      if(current&&String(current.rawDefinition??current.definition??"")===attemptedDefinition)this.state.words.splice(currentIndex,1,originalWord);
+      this.state.settings.currentBookId=originalCurrentBookId;
+      this.rebuildMatcher();
+      if(pendingSaved){try{await this.removeData(PENDING_FILE);}catch(_){}}
+      state.saving=false;
+      state.panel?.querySelectorAll?.("button,textarea").forEach((item)=>{item.disabled=false;});
+      if(status)status.textContent=`保存失败：${error.message||error}。内容仍保留在编辑框中。`;
+      return false;
+    }
+  }
+  bindPopoverDefinitionEditing(popover,wordId){
+    if(!popover)return;
+    const onClick=(event)=>{
+      const editButton=event.target?.closest?.('[data-action="edit-primary-definition"]');
+      if(editButton&&popover.contains(editButton)){event.preventDefault();this.beginPopoverPrimaryDefinitionEdit(popover,wordId);return;}
+      const primaryTab=event.target?.closest?.('.siwords-section-tab[data-section-kind="primary"][data-primary-empty="true"]');
+      if(primaryTab&&popover.contains(primaryTab))this.beginPopoverPrimaryDefinitionEdit(popover,wordId);
+    };
+    popover.addEventListener("click",onClick);
+    popover.__siwordsDefinitionEditDispose=()=>{popover.removeEventListener("click",onClick);popover.__siwordsDefinitionEditDispose=null;popover.__siwordsPrimaryEdit=null;};
   }
   fallbackViewportMetrics(){
     const width=Math.max(320,Number(globalThis.screen?.availWidth)||1024);
@@ -1821,6 +2610,11 @@ class SiWordsPlugin extends Plugin {
       element.__siwordsRepositionFrame=window.requestAnimationFrame(()=>{
         element.__siwordsRepositionFrame=0;
         if(!element.isConnected){element.__siwordsResizeObserver?.disconnect();return;}
+        // A manually resized definition window owns its fixed geometry. A
+        // ResizeObserver callback caused by the drag must not snap it back to
+        // the highlighted word, and later content changes must not make it
+        // oscillate between the anchor and the user's chosen rectangle.
+        if(element.__siwordsUserPositioned||element.__siwordsManualResize)return;
         const anchor=element.__siwordsFloatingAnchor;
         if(anchor)this.positionFloatingElement(element,anchor.anchorX,anchor.anchorY,anchor.options);
       });
@@ -1837,10 +2631,146 @@ class SiWordsPlugin extends Plugin {
     const current=element.__siwordsFloatingAnchor||{};
     const nextOptions=options??current.options??{};
     element.__siwordsFloatingAnchor={anchorX,anchorY,options:nextOptions};
+    if(element.__siwordsUserPositioned){
+      const rect=element.getBoundingClientRect();
+      return {left:rect.left,top:rect.top,width:rect.width,height:rect.height,placement:"manual"};
+    }
     return this.positionFloatingElement(element,anchorX,anchorY,nextOptions);
+  }
+  popoverResizeLimits(metrics=this.captureViewportMetrics()){
+    const margin=10;
+    const maxWidth=Math.max(1,metrics.width-margin*2);
+    const maxHeight=Math.max(1,metrics.height-margin*2);
+    return {
+      metrics,margin,maxWidth,maxHeight,
+      minWidth:Math.min(360,maxWidth),
+      minHeight:Math.min(300,maxHeight),
+    };
+  }
+  canResizePopover(){
+    const metrics=this.captureViewportMetrics();
+    const coarse=typeof window?.matchMedia==="function"&&window.matchMedia("(pointer: coarse)").matches;
+    return !coarse&&metrics.width>640&&metrics.height>=420;
+  }
+  normalizedPopoverSize(size){
+    if(!size)return null;
+    const limits=this.popoverResizeLimits();
+    const width=Math.max(limits.minWidth,Math.min(Number(size.width)||360,limits.maxWidth));
+    const height=Math.max(limits.minHeight,Math.min(Number(size.height)||390,limits.maxHeight));
+    return {width:Math.round(width),height:Math.round(height)};
+  }
+  applyRememberedPopoverSize(element){
+    if(!element||!this.popoverUserSize||!this.canResizePopover())return null;
+    const size=this.normalizedPopoverSize(this.popoverUserSize);
+    if(!size)return null;
+    element.classList.add("is-user-sized");
+    element.style.width=`${size.width}px`;
+    element.style.height=`${size.height}px`;
+    element.style.maxHeight=`${size.height}px`;
+    element.style.setProperty("--siwords-floating-max-height",`${size.height}px`);
+    return size;
+  }
+  applyPopoverResizeRect(element,rect){
+    if(!element)return;
+    element.style.position="fixed";
+    element.style.transform="none";
+    element.style.left=`${Math.round(rect.left)}px`;
+    element.style.top=`${Math.round(rect.top)}px`;
+    element.style.width=`${Math.round(rect.width)}px`;
+    element.style.height=`${Math.round(rect.height)}px`;
+    element.style.maxHeight=`${Math.round(rect.height)}px`;
+    element.style.setProperty("--siwords-floating-max-height",`${Math.round(rect.height)}px`);
+  }
+  resizePopoverAtPointer(event){
+    const session=this.popoverResizeSession;
+    if(!session||event.pointerId!==session.pointerId||!session.element?.isConnected)return;
+    event.preventDefault?.();
+    const dx=Number(event.clientX)-session.pointerX;
+    const dy=Number(event.clientY)-session.pointerY;
+    const {direction,start,limits}=session;
+    const viewportLeft=limits.metrics.left+limits.margin;
+    const viewportTop=limits.metrics.top+limits.margin;
+    const viewportRight=limits.metrics.right-limits.margin;
+    const viewportBottom=limits.metrics.bottom-limits.margin;
+    let left=start.left;let right=start.right;let top=start.top;let bottom=start.bottom;
+    if(direction.includes("w"))left=Math.max(viewportLeft,Math.min(start.left+dx,start.right-limits.minWidth));
+    if(direction.includes("e"))right=Math.min(viewportRight,Math.max(start.right+dx,start.left+limits.minWidth));
+    if(direction.includes("n"))top=Math.max(viewportTop,Math.min(start.top+dy,start.bottom-limits.minHeight));
+    if(direction.includes("s"))bottom=Math.min(viewportBottom,Math.max(start.bottom+dy,start.top+limits.minHeight));
+    this.applyPopoverResizeRect(session.element,{left,top,width:right-left,height:bottom-top});
+  }
+  finishPopoverResize(commit=true){
+    const session=this.popoverResizeSession;
+    if(!session)return;
+    this.popoverResizeSession=null;
+    document.removeEventListener("pointermove",session.move,true);
+    document.removeEventListener("pointerup",session.finish,true);
+    document.removeEventListener("pointercancel",session.cancel,true);
+    window.removeEventListener("blur",session.cancel,true);
+    document.documentElement?.classList.remove("siwords-is-resizing");
+    session.element?.classList.remove("is-resizing");
+    if(session.element)session.element.__siwordsManualResize=false;
+    try{session.handle?.releasePointerCapture?.(session.pointerId);}catch{}
+    if(commit&&session.element?.isConnected){
+      const rect=session.element.getBoundingClientRect();
+      this.popoverUserSize={width:Math.round(rect.width),height:Math.round(rect.height)};
+    }
+  }
+  beginPopoverResize(element,handle,direction,event){
+    if(!element||event.button!==0||!this.canResizePopover())return;
+    event.preventDefault();event.stopPropagation();
+    this.finishPopoverResize(false);
+    if(this.hideTimer)window.clearTimeout(this.hideTimer);
+    this.hideTimer=null;this.cancelHoverInspection();
+    const limits=this.popoverResizeLimits();
+    const measured=element.getBoundingClientRect();
+    const width=Math.min(measured.width,limits.maxWidth);
+    const height=Math.min(measured.height,limits.maxHeight);
+    const left=Math.max(limits.metrics.left+limits.margin,Math.min(measured.left,limits.metrics.right-limits.margin-width));
+    const top=Math.max(limits.metrics.top+limits.margin,Math.min(measured.top,limits.metrics.bottom-limits.margin-height));
+    this.applyPopoverResizeRect(element,{left,top,width,height});
+    element.classList.add("is-user-sized","is-resizing");
+    element.__siwordsManualResize=true;
+    element.__siwordsUserPositioned=true;
+    element.__siwordsPinned=true;
+    element.__siwordsResizeObserver?.disconnect();
+    element.dataset.placement="manual";
+    const start={left,top,right:left+width,bottom:top+height,width,height};
+    const pointerId=event.pointerId;
+    const move=(next)=>this.resizePopoverAtPointer(next);
+    const finish=(next)=>{if(next.pointerId===pointerId)this.finishPopoverResize(true);};
+    const cancel=(next)=>{if(next?.pointerId==null||next.pointerId===pointerId)this.finishPopoverResize(true);};
+    this.popoverResizeSession={element,handle,direction,pointerId,pointerX:Number(event.clientX),pointerY:Number(event.clientY),start,limits,move,finish,cancel};
+    document.addEventListener("pointermove",move,true);
+    document.addEventListener("pointerup",finish,true);
+    document.addEventListener("pointercancel",cancel,true);
+    window.addEventListener("blur",cancel,true);
+    document.documentElement?.classList.add("siwords-is-resizing");
+    try{handle.setPointerCapture?.(pointerId);}catch{}
+  }
+  enablePopoverResizing(element){
+    if(!element)return;
+    const directions=["n","ne","e","se","s","sw","w","nw"];
+    const bindings=[];
+    for(const direction of directions){
+      const handle=document.createElement("span");
+      handle.className=`siwords-resize-handle siwords-resize-handle--${direction}`;
+      handle.dataset.resizeDirection=direction;
+      handle.setAttribute("aria-hidden","true");
+      const down=(event)=>this.beginPopoverResize(element,handle,direction,event);
+      handle.addEventListener("pointerdown",down);
+      element.appendChild(handle);bindings.push([handle,down]);
+    }
+    element.__siwordsResizeDispose=()=>{
+      if(this.popoverResizeSession?.element===element)this.finishPopoverResize(false);
+      for(const [handle,down] of bindings)handle.removeEventListener("pointerdown",down);
+      element.__siwordsResizeDispose=null;
+    };
   }
   disposeFloatingElement(element){
     if(!element)return;
+    element.__siwordsDefinitionEditDispose?.();
+    element.__siwordsResizeDispose?.();
     if(element.__siwordsRepositionFrame)window.cancelAnimationFrame?.(element.__siwordsRepositionFrame);
     element.__siwordsRepositionFrame=0;element.__siwordsResizeObserver?.disconnect();element.remove();
   }
@@ -1851,21 +2781,25 @@ class SiWordsPlugin extends Plugin {
       return existing;
     }
     if(this.hideTimer)window.clearTimeout(this.hideTimer);this.hideTimer=null;
-    this.hidePopover();
+    if(!this.hidePopover())return existing;
     const pop=document.createElement("div");pop.className="siwords-popover siwords-ui";
     if(this.warmingFloatingSurface){pop.style.opacity="0";pop.style.pointerEvents="none";pop.setAttribute("aria-hidden","true");}
     pop.dataset.wordId=word.id;this.activePopoverWordId=word.id;
-    pop.innerHTML=`<div class="siwords-popover__head"><span class="siwords-dot" style="background:${COLORS[this.entryColor(word)]}"></span><strong>${escapeHTML(word.word)}</strong><button data-action="speak" title="发音" aria-label="播放 ${escapeHTML(word.word)} 的发音">🔊</button></div>${this.definitionHTML(word)}${word.sentence?`<div class="siwords-context">${escapeHTML(word.sentence)}</div>`:""}<div class="siwords-popover__footer">${word.sourceTitle?`<button type="button" class="siwords-source" data-action="source" title="打开来源">来源：${escapeHTML(word.sourceTitle)}</button>`:""}<div class="siwords-popover__actions"><button data-action="master">${word.mastered?"取消掌握":"标记掌握"}</button><button data-action="edit">编辑</button></div></div>`;
+    pop.innerHTML=`<div class="siwords-popover__head"><span class="siwords-dot" style="background:${COLORS[this.entryColor(word)]}"></span><strong>${escapeHTML(word.word)}</strong><button data-action="speak" title="发音" aria-label="播放 ${escapeHTML(word.word)} 的发音">🔊</button><button data-action="close" class="siwords-popover__close" title="关闭" aria-label="关闭词条窗口">×</button></div>${this.definitionHTML(word,{editablePrimary:true})}${word.sentence?`<div class="siwords-context">${escapeHTML(word.sentence)}</div>`:""}<div class="siwords-popover__footer">${word.sourceTitle?`<button type="button" class="siwords-source" data-action="source" title="打开来源">来源：${escapeHTML(word.sourceTitle)}</button>`:""}<div class="siwords-popover__actions"><button data-action="master">${word.mastered?"取消掌握":"标记掌握"}</button><button data-action="edit" title="编辑单词、别名和全部 Markdown 分节">完整编辑</button></div></div>`;
     pop.addEventListener("mouseenter",()=>{if(this.hideTimer)window.clearTimeout(this.hideTimer);this.hideTimer=null;});
-    pop.addEventListener("mouseleave",()=>this.hidePopoverSoon());
+    pop.addEventListener("mouseleave",(event)=>{if(!pop.__siwordsManualResize&&!pop.__siwordsPinned){this.lastPopoverPointer={x:Number(event.clientX),y:Number(event.clientY)};this.hidePopoverSoon(this.lastPopoverPointer);}});
+    this.enablePopoverResizing(pop);
     this.bindSectionTabs(pop);
+    this.bindPopoverDefinitionEditing(pop,word.id);
     pop.querySelector('[data-action="speak"]').addEventListener("click",()=>this.speak(word.word));
+    pop.querySelector('[data-action="close"]').addEventListener("click",()=>this.hidePopover());
     pop.querySelector('[data-action="master"]').addEventListener("click",async()=>{await this.toggleMastered(word.id);this.hidePopover();});
-    pop.querySelector('[data-action="edit"]').addEventListener("click",()=>{this.hidePopover();this.openWordDialog(word);});
+    pop.querySelector('[data-action="edit"]').addEventListener("click",()=>{if(!this.hidePopover())return;this.openWordDialog(this.state.words.find((item)=>item.id===word.id)||word);});
     pop.querySelector('[data-action="source"]')?.addEventListener("click",()=>this.openWordSource(word));
     document.body.appendChild(pop);this.activePopoverElement=pop;
+    const rememberedSize=this.applyRememberedPopoverSize(pop);
     const options={alignStart:true,gap:10,preferBelow:true,minVisibleHeight:220};
-    const placed=this.provisionalFloatingElement(pop,x,y,{...options,estimatedWidth:360,estimatedHeight:390});
+    const placed=this.provisionalFloatingElement(pop,x,y,{...options,estimatedWidth:rememberedSize?.width||360,estimatedHeight:rememberedSize?.height||390});
     this.observeFloatingElement(pop,x,y,{...options,placement:placed?.placement});
     return pop;
   }
@@ -1916,7 +2850,15 @@ class SiWordsPlugin extends Plugin {
     this.translationController?.abort();this.translationController=null;
     if(typeof document!=="undefined")document.querySelectorAll(".siwords-translate-popover").forEach((item)=>this.disposeFloatingElement(item));
   }
-  onKeyDown(event){if(event.key==="Escape"){this.cancelHoverInspection();this.cancelSelectionIntent();this.hidePopover();this.hideTranslationPopover();this.removeFloat();}}
+  onKeyDown(event){
+    if(event.key!=="Escape")return;
+    if(this.activePopoverElement?.__siwordsPrimaryEdit){
+      event.preventDefault?.();event.stopPropagation?.();
+      this.cancelPopoverPrimaryDefinitionEdit(this.activePopoverElement,{confirmDiscard:true});
+      return;
+    }
+    this.cancelHoverInspection();this.cancelSelectionIntent();this.hidePopover();this.hideTranslationPopover();this.removeFloat();
+  }
   async copyText(text){
     const value=String(text||"");
     if(navigator.clipboard?.writeText)return navigator.clipboard.writeText(value);
@@ -1933,7 +2875,7 @@ class SiWordsPlugin extends Plugin {
     const translationController=new AbortController();
     this.translationController=translationController;
     const pop=document.createElement("div");pop.className="siwords-translate-popover siwords-ui";
-    pop.innerHTML=`<div class="siwords-translate-head"><strong>划词翻译</strong><button type="button" data-action="translate-close" aria-label="关闭">×</button></div><div class="siwords-translate-source">${escapeHTML(text)}</div><div class="siwords-translate-result" data-role="translate-result">正在翻译…</div><div class="siwords-translate-actions"><button type="button" data-action="translate-copy" disabled>复制</button><button type="button" data-action="translate-add" disabled>加入生词本</button></div>`;
+    pop.innerHTML=`<div class="siwords-translate-head"><strong>划词翻译</strong><button type="button" data-action="translate-close" aria-label="关闭">×</button></div><div class="siwords-translate-source">${escapeHTML(text)}</div><div class="siwords-translate-result" data-role="translate-result">正在翻译…</div><div class="siwords-translate-actions"><button type="button" data-action="translate-copy" disabled>复制</button><button type="button" data-action="translate-add">加入生词本</button></div>`;
     document.body.appendChild(pop);
     const translationAnchorX=Number(rect?.left??rect?.right??16);
     const translationAnchorY=Number(rect?.bottom??rect?.top??16);
@@ -1948,8 +2890,7 @@ class SiWordsPlugin extends Plugin {
     pop.querySelector('[data-action="translate-close"]').addEventListener("click",()=>this.hideTranslationPopover());
     copyButton.addEventListener("click",async()=>{if(!translation)return;await this.copyText(translation);copyButton.textContent="已复制";window.setTimeout(()=>{if(copyButton.isConnected)copyButton.textContent="复制";},1500);});
     addButton.addEventListener("click",()=>{
-      if(!translation)return;
-      const draft=normalizeWord({word:text,definition:translation,rawDefinition:translation,sentence:context.sentence||"",language:context.language||"en",bookId:this.state.settings.currentBookId,sourceDocId:context.sourceDocId||"",sourceBlockId:context.sourceBlockId||"",sourceTitle:context.sourceTitle||"",sourcePath:context.sourcePath||"",sourceBox:context.sourceBox||"",sourcePdfPage:context.sourcePdfPage||0},this.state.settings.currentBookId);
+      const draft=normalizeWord({word:text,definition:translation||"",rawDefinition:translation||"",sentence:context.sentence||"",language:context.language||"en",bookId:this.state.settings.currentBookId,sourceDocId:context.sourceDocId||"",sourceBlockId:context.sourceBlockId||"",sourceTitle:context.sourceTitle||"",sourcePath:context.sourcePath||"",sourceBox:context.sourceBox||"",sourcePdfPage:context.sourcePdfPage||0},this.state.settings.currentBookId);
       this.hideTranslationPopover();this.openWordDialog(draft);
     });
     (async()=>{
@@ -1970,7 +2911,7 @@ class SiWordsPlugin extends Plugin {
           if(translation){this.aiCache.set(key,{at:Date.now(),value:translation});while(this.aiCache.size>250)this.aiCache.delete(this.aiCache.keys().next().value);}
         }
         if(translationController.signal.aborted||generation!==this.translationGeneration||!pop.isConnected)return;
-        resultNode.innerHTML=renderMarkdown(translation);addButton.disabled=false;copyButton.disabled=false;
+        resultNode.innerHTML=renderMarkdown(translation);copyButton.disabled=false;
       }catch(error){
         if(error?.name==="AbortError")return;
         if(generation!==this.translationGeneration||!pop.isConnected)return;
@@ -1987,30 +2928,33 @@ class SiWordsPlugin extends Plugin {
     try{return openTab({app:this.app,doc:{id,action:["cb-get-focus","cb-get-hl"]}});}
     catch(error){showMessage(`无法打开来源：${error.message||error}`,4500,"error");return null;}
   }
-  async getSiYuanProvider() {
+  async getSiYuanProvider(options = {}) {
     const cached=this.siyuanAIConfigCache;
-    if(cached&&Date.now()-cached.at<60000)return {...cached.value,temperature:Number(this.state.settings.aiTemperature)||0.2,maxTokens:Number(this.state.settings.aiMaxTokens)||600};
-    const response = await fetch("/api/system/getConf", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((item) => item.json());
+    if(!options.forceRefresh&&cached&&Date.now()-cached.at<60000)return {...cached.value,temperature:Number(this.state.settings.aiTemperature)||0.2,maxTokens:Number(this.state.settings.aiMaxTokens)||600};
+    let response;
+    try {
+      response = await fetch("/api/system/getConf", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((item) => item.json());
+    } catch (error) {
+      throw new Error(`无法读取思源 AI 配置：${error?.message || error}`);
+    }
     if (response.code !== 0) throw new Error(response.msg || "无法读取思源 AI 配置");
     const ai = response.data?.conf?.ai;
     const providers = ai?.providers || [];
-    const modelId = ai?.agent?.modelId;
-    let provider;
-    let model;
-    for (const candidate of providers) {
-      const hit = (candidate.models || []).find((item) => item.enabled && item.id === modelId);
-      if (candidate.enabled && hit) { provider = candidate; model = hit; break; }
-    }
-    if (!provider) {
-      provider = providers.find((item) => item.enabled && (item.models || []).some((modelItem) => modelItem.enabled));
-      model = provider?.models?.find((item) => item.enabled);
-    }
-    if (!provider || !model) throw new Error("思源中没有启用可用的 AI 模型");
+    const modelId = ai?.editing?.modelId || ai?.agent?.modelId;
+    const {provider,model}=selectSiYuanProviderModel(providers,modelId);
+    const protocol=String(provider.protocol || "openai").trim().toLowerCase();
+    if(protocol!=="openai"&&protocol!=="openai-compatible")throw new Error(`SiWords 暂不支持思源 AI 的“${protocol || "未知"}”协议，请改用 OpenAI 协议或在 SiWords 中单独配置`);
+    const apiUrl=String(provider.baseURL || "").replace(/\/+$/, "");
+    safeRemoteUrl(apiUrl,"思源 AI 地址");
+    const resolvedModel=resolveSiYuanModelConfig(model,apiUrl);
+    if(!resolvedModel.model)throw new Error("思源选中的 AI 模型缺少真实 API 名称，请在思源 AI 设置中重新保存该模型");
     const value={
       provider: "openai-compatible",
-      apiUrl: String(provider.baseURL || "").replace(/\/+$/, ""),
+      apiUrl,
       apiKey: String(provider.apiKey || ""),
-      model: model.id || model.name,
+      model: resolvedModel.model,
+      extraParams: resolvedModel.extraParams,
+      migratedModelFrom: resolvedModel.migratedFrom,
       temperature: Number(this.state.settings.aiTemperature) || 0.2,
       maxTokens: Number(this.state.settings.aiMaxTokens) || 600,
       timeout: Math.max(15, Number(provider.requestTimeout) || 90),
@@ -2021,7 +2965,8 @@ class SiWordsPlugin extends Plugin {
   async currentAIConfig() {
     if (this.state.settings.aiSource === "siyuan") {
       const config=await this.getSiYuanProvider();
-      return {...config,extraParams:this.state.settings.aiExtraParams,retries:this.state.settings.aiRetries};
+      const extraParams=mergeExtraParams(config.extraParams||{},this.state.settings.aiExtraParams);
+      return {...config,extraParams,retries:this.state.settings.aiRetries};
     }
     return {
       provider: normalizeAIProvider(this.state.settings.aiProvider),
@@ -2088,11 +3033,24 @@ class SiWordsPlugin extends Plugin {
     const prompt = applyTemplate(this.state.settings.aiPrompt, { word, sentence, language });
     return this.requestAI(prompt);
   }
+  async generateVocabularyExpansion(word, sentence, language = "en") {
+    if (!this.state.settings.aiEnabled) throw new Error("AI 尚未启用");
+    if (!this.state.settings.enableVocabularyExpansion) throw new Error("AI 词汇扩展尚未启用");
+    const template = String(this.state.settings.vocabularyExpansionPrompt || DEFAULT_VOCABULARY_EXPANSION_PROMPT);
+    if (!template.includes("{{word}}") || !template.includes("{{max}}")) throw new Error("词汇扩展提示词必须包含 {{word}} 和 {{max}}");
+    const limit = clampVocabularyExpansionLimit(this.state.settings.vocabularyExpansionLimit);
+    const prompt = applyTemplate(template, { word, sentence, language, max: limit });
+    const config = await this.currentAIConfig();
+    const response = await this.requestAI(prompt, { ...config, temperature: 0, maxTokens: Math.max(900, Number(config.maxTokens) || 0), retries: 0 });
+    return parseVocabularyExpansionResponse(response, word, limit);
+  }
   async testAIConnection() {
     const status = this.managerRoot?.querySelector('[data-role="ai-settings-status"]');
     if (status) status.textContent = "正在测试 AI 连接…";
     try {
-      const result = await this.requestAI('Reply with only "OK".');
+      const config=this.state.settings.aiSource==="siyuan"?await this.getSiYuanProvider({forceRefresh:true}):await this.currentAIConfig();
+      const mergedConfig=this.state.settings.aiSource==="siyuan"?{...config,extraParams:mergeExtraParams(config.extraParams||{},this.state.settings.aiExtraParams),retries:this.state.settings.aiRetries}:config;
+      const result = await this.requestAI('Reply with only "OK".',mergedConfig);
       if (status) status.textContent = `连接成功：${String(result).slice(0, 80)}`;
       showMessage("SiWords AI 连接成功");
       return true;
@@ -2104,11 +3062,12 @@ class SiWordsPlugin extends Plugin {
   }
   async importAIFromSiyuan() {
     try {
-      const config = await this.getSiYuanProvider();
+      const config = await this.getSiYuanProvider({forceRefresh:true});
       this.state.settings.aiSource = "custom";
       this.state.settings.aiProvider = "openai-compatible";
       this.state.settings.aiApiUrl = config.apiUrl;
       this.state.settings.aiModel = config.model;
+      this.state.settings.aiExtraParams = JSON.stringify(mergeExtraParams(config.extraParams || {}, this.state.settings.aiExtraParams), null, 2);
       this.secrets.apiKey = config.apiKey;
       await this.saveSecrets();
       await this.commitChange("已从思源导入 AI 配置");
@@ -2126,5 +3085,5 @@ class SiWordsPlugin extends Plugin {
   }
 }
 
-SiWordsPlugin.__test={canonicalKey,normalizeSearchText,normalizeAliases,defaultSettings,defaultState,normalizeState,normalizeWord,normalizeBook,validateRawState,validateState,chooseStatePayload,parsePatternPhrase,parseDefinitionSections,isDocumentInScope,buildMatcher,findTermMatches,extractSentence,applyTemplate,safeRemoteUrl,safeTtsUrl,redactSecret,deleteWordState,restoreWordState,renderMarkdown,chooseFloatingPlacement,entryColor,normalizeAIProvider,detectAIType,deepMergeSafe,mergeExtraParams,shouldRetry,buildAIRequest,parseAIResponse};
+SiWordsPlugin.__test={canonicalKey,normalizeSearchText,normalizeAliases,defaultSettings,defaultState,normalizeState,normalizeWord,normalizeBook,validateRawState,validateState,chooseStatePayload,parsePatternPhrase,parseDefinitionSections,isDocumentInScope,buildMatcher,findTermMatches,extractSentence,applyTemplate,clampVocabularyExpansionLimit,sanitizeVocabularyInline,parseVocabularyExpansionResponse,formatVocabularyExpansionMarkdown,upsertVocabularyExpansionSection,extractPrimaryDefinition,primaryDefinitionInputError,replacePrimaryDefinitionPreservingSections,pointRectDistanceSquared,safeRemoteUrl,safeTtsUrl,redactSecret,deleteWordState,restoreWordState,renderMarkdown,chooseFloatingPlacement,entryColor,normalizeAIProvider,detectAIType,isOfficialDeepSeekAPI,resolveSiYuanModelConfig,selectSiYuanProviderModel,deepMergeSafe,mergeExtraParams,shouldRetry,buildAIRequest,parseAIResponse,normalizeFeedbackDraft,feedbackDraftSignature,buildFeedbackReport,buildFeedbackIssueUrl};
 module.exports=SiWordsPlugin;

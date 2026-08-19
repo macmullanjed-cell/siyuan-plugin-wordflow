@@ -210,6 +210,26 @@ function stateWithWord(word, revision = 1) {
     assert.ok(events.includes("siwords-pending.json:remove"), "pending snapshot must be removed after the main write");
   });
 
+  await test("a post-save visual refresh failure cannot turn a durable write into a false rollback", async () => {
+    const plugin = new PluginClass();
+    plugin.state = stateWithWord("durable", 11);
+    plugin.writeQueue = Promise.resolve();
+    plugin.storageQuarantined = false;
+    plugin.isSaving = false;
+    plugin.rebuildMatcher = () => {};
+    plugin.afterVisualChange = () => { throw new Error("render failed"); };
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      await plugin.commitChange("durable save");
+    } finally {
+      console.error = originalConsoleError;
+    }
+    assert.equal(plugin._data["siwords-state.json"].words[0].word, "durable");
+    assert.equal(plugin.state.revision, 12, "the successful durable revision must remain in memory");
+    assert.ok(messages.some((message) => message.includes("数据已保存，但界面刷新失败")), "the user needs an accurate reload instruction");
+  });
+
   process.stdout.write(JSON.stringify({ suite: "p0-state-regression", passed, failed: failures.length, messages: messages.length }) + "\n");
   if (failures.length) process.exitCode = 1;
 })().finally(() => {
